@@ -69,7 +69,7 @@ export function registerCommandToProgram(siteCmd: Command, cmd: CliCommand): voi
     }
   }
   subCmd
-    .option('-f, --format <fmt>', 'Output format: table, json, yaml, md, csv', 'table')
+    .option('-f, --format <fmt>', 'Output format: table, plain, json, yaml, md, csv', 'table')
     .option('-v, --verbose', 'Debug output', false);
 
   subCmd.addHelpText('after', formatRegistryHelpText(cmd));
@@ -95,7 +95,7 @@ export function registerCommandToProgram(siteCmd: Command, cmd: CliCommand): voi
       }
 
       const verbose = optionsRecord.verbose === true;
-      const format = typeof optionsRecord.format === 'string' ? optionsRecord.format : 'table';
+      let format = typeof optionsRecord.format === 'string' ? optionsRecord.format : 'table';
       if (verbose) process.env.OPENCLI_VERBOSE = '1';
       if (cmd.deprecated) {
         const message = typeof cmd.deprecated === 'string' ? cmd.deprecated : `${fullName(cmd)} is deprecated.`;
@@ -108,10 +108,14 @@ export function registerCommandToProgram(siteCmd: Command, cmd: CliCommand): voi
         return;
       }
 
+      const resolved = getRegistry().get(fullName(cmd)) ?? cmd;
+      if (format === 'table' && resolved.defaultFormat) {
+        format = resolved.defaultFormat;
+      }
+
       if (verbose && (!result || (Array.isArray(result) && result.length === 0))) {
         console.error(chalk.yellow('[Verbose] Warning: Command returned an empty result.'));
       }
-      const resolved = getRegistry().get(fullName(cmd)) ?? cmd;
       renderOutput(result, {
         fmt: format,
         columns: resolved.columns,
