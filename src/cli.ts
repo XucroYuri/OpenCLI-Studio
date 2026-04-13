@@ -743,6 +743,32 @@ cli({
       printCompletionScript(shell);
     });
 
+  const studioCmd = program.command('studio').description('Start the OpenCLI Studio local web console');
+
+  studioCmd
+    .option('--port <port>', 'Studio server port', '3113')
+    .action(async (opts: { port: string }) => {
+      const { runStudioCommand } = await import('./studio/command.js');
+      await runStudioCommand({
+        mode: 'open',
+        openBrowser: true,
+        port: parseInt(opts.port, 10),
+      });
+    });
+
+  studioCmd
+    .command('serve')
+    .description('Start the OpenCLI Studio server without opening a browser')
+    .option('--port <port>', 'Studio server port', '3113')
+    .action(async (opts: { port: string }) => {
+      const { runStudioCommand } = await import('./studio/command.js');
+      await runStudioCommand({
+        mode: 'serve',
+        openBrowser: false,
+        port: parseInt(opts.port, 10),
+      });
+    });
+
   // ── Plugin management ──────────────────────────────────────────────────────
 
   const pluginCmd = program.command('plugin').description('Manage opencli plugins');
