@@ -32,6 +32,7 @@
   },
   "files": [
     "dist/src/",
+    "dist/studio/",
     "clis/",
     "cli-manifest.json",
     "scripts/",
@@ -50,6 +51,10 @@
     "preuninstall": "node -e \"fetch('http://127.0.0.1:'+(process.env.OPENCLI_DAEMON_PORT||'19825')+'/shutdown',{method:'POST',headers:{'X-OpenCLI':'1'},signal:AbortSignal.timeout(3000)}).catch(()=>{})\" || true",
     "postinstall": "node scripts/postinstall.js || true; node scripts/fetch-adapters.js || true",
     "typecheck": "tsc --noEmit",
+    "studio:dev": "npm --prefix studio run dev",
+    "studio:build": "npm --prefix studio run build",
+    "studio:test": "npm --prefix studio run test",
+    "studio:typecheck": "npm --prefix studio run typecheck",
     "prepare": "[ -d src ] && npm run build || true",
     "prepublishOnly": "npm run build",
     "test": "vitest run --project unit --project extension --project adapter",
