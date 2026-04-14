@@ -66,7 +66,7 @@ describe('buildCommandReadiness', () => {
         capability: 'discovery',
         risk: 'safe',
         market: 'domestic',
-        siteCategory: 'media',
+        siteCategory: 'social',
         uiHints: {
           supportsLists: true,
           supportsDetails: false,
@@ -124,7 +124,7 @@ describe('buildCommandReadiness', () => {
           capability: 'discovery',
           risk: 'safe',
           market: 'domestic',
-          siteCategory: 'commerce',
+          siteCategory: 'ecommerce',
           uiHints: {
             supportsLists: true,
             supportsDetails: false,
@@ -162,7 +162,7 @@ describe('buildCommandReadiness', () => {
           capability: 'search',
           risk: 'safe',
           market: 'international',
-          siteCategory: 'utility',
+          siteCategory: 'tools',
           uiHints: {
             supportsLists: true,
             supportsDetails: false,

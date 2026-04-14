@@ -404,6 +404,145 @@ export const useStudioStore = defineStore('studio', () => {
     }
   }
 
+  // ── 站点→市场（国内/国际）映射 ──
+
+  const domesticSites = new Set([
+    '1688', '36kr', 'bilibili', 'boss', 'chaoxing', 'chatwise', 'cnki',
+    'ctrip', 'douban', 'doubao', 'doubao-app', 'douyin', 'gitee', 'hupu',
+    'jd', 'jianyu', 'jike', 'jimeng', 'ke', 'linux-do', 'maimai', 'mubu',
+    'ones', 'paperreview', 'quark', 'sinablog', 'sinafinance', 'smzdm',
+    'taobao', 'tieba', 'v2ex', 'weibo', 'weixin', 'weread', 'xianyu',
+    'xiaoe', 'xiaohongshu', 'xiaoyuzhou', 'xueqiu', 'yuanbao', 'yollomi',
+    'zhihu', 'zsxq',
+  ]);
+
+  function isSiteDomestic(site: string): boolean {
+    return domesticSites.has(site);
+  }
+
+  // ── 站点→中文显示名映射 ──
+
+  const siteZhNameMap: Record<string, string> = {
+    bilibili: '哔哩哔哩', douyin: '抖音', xiaohongshu: '小红书',
+    weibo: '微博', zhihu: '知乎', douban: '豆瓣', jike: '即刻',
+    tieba: '贴吧', weixin: '微信', hupu: '虎扑', xiaoyuzhou: '小宇宙',
+    zsxq: '知识星球', maimai: '脉脉', weread: '微信读书',
+    '36kr': '36氪', sinablog: '新浪博客', sinafinance: '新浪财经',
+    jd: '京东', taobao: '淘宝', ctrip: '携程', smzdm: '什么值得买',
+    xianyu: '闲鱼', ke: '贝壳找房', cnki: '中国知网', chaoxing: '超星学习通',
+    doubao: '豆包', 'doubao-app': '豆包 App', jimeng: '即梦',
+    mubu: '幕布', quark: '夸克', yuanbao: '元宝', xiaoe: '小鹅通',
+    jianyu: '简鱼', boss: 'BOSS直聘', yollomi: 'Yollomi',
+    chatwise: 'ChatWise', paperreview: '论文评审',
+    xueqiu: '雪球', wikipedia: '维基百科', linkedin: '领英',
+  };
+
+  function getSiteDisplayName(site: string, locale: string): string {
+    if (locale === 'zh-CN') {
+      return siteZhNameMap[site] ?? site;
+    }
+    return site;
+  }
+
+  // ── 站点→功能分类映射 ──
+
+  const siteCategoryMap: Record<string, string> = {
+    // 社交媒体
+    twitter: 'social', instagram: 'social', facebook: 'social',
+    tiktok: 'social', douyin: 'social', bilibili: 'social',
+    bluesky: 'social', weibo: 'social', xiaohongshu: 'social',
+    jike: 'social', tieba: 'social', reddit: 'social',
+    'discord-app': 'social', band: 'social', linkedin: 'social',
+    maimai: 'social', zsxq: 'social', pixiv: 'social',
+    youtube: 'social', hupu: 'social', xiaoyuzhou: 'social',
+    douban: 'social', weixin: 'social',
+    // 新闻资讯
+    '36kr': 'news', bbc: 'news', reuters: 'news',
+    hackernews: 'news', devto: 'news', producthunt: 'news',
+    google: 'news', v2ex: 'news', 'linux-do': 'news',
+    lesswrong: 'news', lobsters: 'news', medium: 'news',
+    substack: 'news', sinablog: 'news',
+    // 财经热点
+    xueqiu: 'finance', sinafinance: 'finance', bloomberg: 'finance',
+    barchart: 'finance', binance: 'finance', 'yahoo-finance': 'finance',
+    // 电商购物
+    amazon: 'ecommerce', '1688': 'ecommerce', jd: 'ecommerce',
+    taobao: 'ecommerce', coupang: 'ecommerce', ctrip: 'ecommerce',
+    smzdm: 'ecommerce', xianyu: 'ecommerce', steam: 'ecommerce',
+    ke: 'ecommerce',
+    // 学术科研
+    arxiv: 'academic', cnki: 'academic', chaoxing: 'academic',
+    paperreview: 'academic', wikipedia: 'academic', dictionary: 'academic',
+    stackoverflow: 'academic', zhihu: 'academic', weread: 'academic',
+    // 效率工具
+    chatgpt: 'tools', 'chatgpt-app': 'tools', chatwise: 'tools',
+    codex: 'tools', cursor: 'tools', doubao: 'tools',
+    'doubao-app': 'tools', gemini: 'tools', grok: 'tools',
+    hf: 'tools', jimeng: 'tools', mubu: 'tools',
+    notion: 'tools', notebooklm: 'tools', ones: 'tools',
+    quark: 'tools', yuanbao: 'tools', yollomi: 'tools',
+    xiaoe: 'tools', web: 'tools', jianyu: 'tools', gitee: 'tools',
+    // 其他
+    antigravity: 'other', imdb: 'other', spotify: 'other',
+    'apple-podcasts': 'other', boss: 'other',
+  };
+
+  const categoryLabelMap: Record<string, { en: string; zh: string; icon: string }> = {
+    social: { en: 'Social Media', zh: '社交媒体', icon: '💬' },
+    news: { en: 'News & Info', zh: '新闻资讯', icon: '📰' },
+    finance: { en: 'Finance', zh: '财经热点', icon: '💰' },
+    ecommerce: { en: 'E-commerce', zh: '电商购物', icon: '🛒' },
+    academic: { en: 'Academic', zh: '学术科研', icon: '🎓' },
+    tools: { en: 'Tools', zh: '效率工具', icon: '🔧' },
+    other: { en: 'Other', zh: '其他', icon: '📦' },
+  };
+
+  function getSiteCategory(site: string): string {
+    return siteCategoryMap[site] ?? 'other';
+  }
+
+  function getCategoryLabel(category: string, locale: string): string {
+    const entry = categoryLabelMap[category];
+    if (!entry) return category;
+    return locale === 'zh-CN' ? entry.zh : entry.en;
+  }
+
+  function getCategoryIcon(category: string): string {
+    return categoryLabelMap[category]?.icon ?? '📦';
+  }
+
+  const categoryGroups = computed(() => {
+    const groups = new Map<string, typeof registry.value.commands>();
+    for (const cmd of registry.value.commands) {
+      const cat = getSiteCategory(cmd.site);
+      const list = groups.get(cat) ?? [];
+      list.push(cmd);
+      groups.set(cat, list);
+    }
+    return Array.from(groups.entries())
+      .map(([category, commands]) => ({ category, commands, count: commands.length }))
+      .sort((a, b) => b.count - a.count);
+  });
+
+  const siteGroups = computed(() => {
+    const groups = new Map<string, typeof registry.value.commands>();
+    for (const cmd of registry.value.commands) {
+      const list = groups.get(cmd.site) ?? [];
+      list.push(cmd);
+      groups.set(cmd.site, list);
+    }
+    return Array.from(groups.entries())
+      .map(([site, commands]) => {
+        const category = getSiteCategory(site);
+        const domestic = isSiteDomestic(site);
+        return { site, commands, count: commands.length, category, icon: getCategoryIcon(category), domestic };
+      })
+      .sort((a, b) => {
+        if (a.domestic !== b.domestic) return a.domestic ? -1 : 1;
+        return b.count - a.count;
+      });
+  });
+
   return {
     registry,
     env,
@@ -437,6 +576,13 @@ export const useStudioStore = defineStore('studio', () => {
     registryPresets,
     workbenchPresets,
     insightPresets,
+    categoryGroups,
+    siteGroups,
+    getSiteCategory,
+    getCategoryLabel,
+    getCategoryIcon,
+    isSiteDomestic,
+    getSiteDisplayName,
     setSelectedCommand,
     setSelectedRecipe,
     setAdvancedMode,

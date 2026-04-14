@@ -18,7 +18,7 @@ export interface StudioCommandMeta {
   capability: StudioCapability;
   risk: StudioRisk;
   market: 'domestic' | 'international' | 'unknown';
-  siteCategory: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
+  siteCategory: 'social' | 'news' | 'finance' | 'ecommerce' | 'academic' | 'tools' | 'other';
   uiHints: {
     supportsLists: boolean;
     supportsDetails: boolean;

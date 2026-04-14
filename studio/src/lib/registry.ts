@@ -1,5 +1,7 @@
 import type { StudioCapability, StudioCommandItem, StudioMode, StudioRisk, StudioSurface } from '../types';
 
+export type SiteCategoryKey = 'social' | 'news' | 'finance' | 'ecommerce' | 'academic' | 'tools' | 'other';
+
 export type RegistryPurpose =
   | 'discovery'
   | 'automation'
@@ -13,7 +15,7 @@ export interface RegistryFilters {
   search: string;
   site: string;
   market: 'domestic' | 'international' | 'unknown' | 'all';
-  siteCategory: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other' | 'all';
+  siteCategory: SiteCategoryKey | 'all';
   surface: StudioSurface | 'all';
   mode: StudioMode | 'all';
   capability: StudioCapability | 'all';
@@ -35,6 +37,7 @@ export function listWorkbenchCommands(
 export function filterRegistryCommands(
   commands: StudioCommandItem[],
   filters: RegistryFilters,
+  resolveSiteCategory: (site: string) => string = () => 'other',
 ): StudioCommandItem[] {
   const search = filters.search.trim().toLowerCase();
 
@@ -56,7 +59,7 @@ export function filterRegistryCommands(
     if (filters.mode !== 'all' && command.meta.mode !== filters.mode) return false;
     if (filters.capability !== 'all' && command.meta.capability !== filters.capability) return false;
     if (filters.market !== 'all' && command.meta.market !== filters.market) return false;
-    if (filters.siteCategory !== 'all' && command.meta.siteCategory !== filters.siteCategory) return false;
+    if (filters.siteCategory !== 'all' && resolveSiteCategory(command.site) !== filters.siteCategory) return false;
     if (filters.risk !== 'all' && command.meta.risk !== filters.risk) return false;
     if (filters.purpose !== 'all' && inferCommandPurpose(command) !== filters.purpose) return false;
     if (filters.supportsChartsOnly && !command.meta.uiHints.supportsCharts) return false;
@@ -80,7 +83,10 @@ export interface RegistryCatalogEntry {
   count: number;
 }
 
-export function buildRegistryCatalog(commands: StudioCommandItem[]): Record<RegistryCatalogAxis, RegistryCatalogEntry[]> {
+export function buildRegistryCatalog(
+  commands: StudioCommandItem[],
+  resolveSiteCategory: (site: string) => string = () => 'other',
+): Record<RegistryCatalogAxis, RegistryCatalogEntry[]> {
   const marketValues = new Map<string, number>();
   const siteValues = new Map<string, number>();
   const surfaceValues = new Map<string, number>();
@@ -92,7 +98,7 @@ export function buildRegistryCatalog(commands: StudioCommandItem[]): Record<Regi
 
   for (const command of commands) {
     const market = command.meta.market ?? 'unknown';
-    const siteCategory = command.meta.siteCategory ?? 'other';
+    const siteCategory = resolveSiteCategory(command.site);
     const purpose = inferCommandPurpose(command);
 
     marketValues.set(market, (marketValues.get(market) ?? 0) + 1);

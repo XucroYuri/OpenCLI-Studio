@@ -17,7 +17,7 @@ const COMMANDS: StudioCommandItem[] = [
       capability: 'discovery',
       risk: 'safe',
       market: 'domestic',
-      siteCategory: 'commerce',
+      siteCategory: 'ecommerce',
       uiHints: {
         supportsLists: true,
         supportsDetails: false,
@@ -63,7 +63,7 @@ const COMMANDS: StudioCommandItem[] = [
       capability: 'action',
       risk: 'confirm',
       market: 'domestic',
-      siteCategory: 'commerce',
+      siteCategory: 'ecommerce',
       uiHints: {
         supportsLists: false,
         supportsDetails: false,
