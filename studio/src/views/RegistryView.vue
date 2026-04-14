@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { NButton, NCard, NInput, NSelect, NSwitch, NTag } from 'naive-ui';
+import { NButton, NCard, NInput, NSelect, NSwitch, NTag, useMessage } from 'naive-ui';
+import PresetShelf from '../components/PresetShelf.vue';
+import SavePresetButton from '../components/SavePresetButton.vue';
+import { buildRegistryPresetState, readRegistryPresetState } from '../lib/preset-state';
 import { filterRegistryCommands, type RegistryFilters } from '../lib/registry';
 import { buildRegistryQuery, parseRegistryQuery } from '../lib/routes';
 import { useStudioStore } from '../stores/studio';
+import type { StudioCommandItem, StudioPresetEntry } from '../types';
 
 const store = useStudioStore();
 const router = useRouter();
 const route = useRoute();
+const message = useMessage();
 
 const initialFilters = parseRegistryQuery(route.query);
 if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
@@ -33,6 +38,7 @@ const currentFilters = computed<RegistryFilters>(() => ({
 }));
 
 const filteredCommands = computed(() => filterRegistryCommands(store.registry.commands, currentFilters.value));
+const favoriteCount = computed(() => store.favoriteCommandIds.size);
 
 const siteOptions = computed(() => [
   { label: 'All sites', value: 'all' },
@@ -77,6 +83,41 @@ function openWorkbench(command: string): void {
   });
 }
 
+async function toggleCommandFavorite(command: StudioCommandItem): Promise<void> {
+  const nextFavorite = !store.favoriteCommandIds.has(command.command);
+  await store.toggleFavorite('command', command.command, nextFavorite);
+  message.success(nextFavorite ? `Favorited ${command.command}` : `Removed ${command.command} from favorites`);
+}
+
+async function saveView(input: { name: string; description: string }): Promise<void> {
+  await store.savePreset({
+    kind: 'registry',
+    name: input.name,
+    description: input.description || null,
+    state: buildRegistryPresetState(currentFilters.value),
+  });
+  message.success(`Saved registry preset "${input.name}"`);
+}
+
+function applyRegistryPreset(preset: StudioPresetEntry): void {
+  const state = readRegistryPresetState(preset.state);
+  store.setAdvancedMode(state.advancedMode);
+  search.value = state.search;
+  site.value = state.site;
+  mode.value = state.mode;
+  capability.value = state.capability;
+  risk.value = state.risk;
+  supportsChartsOnly.value = state.supportsChartsOnly;
+  message.success(`Applied preset "${preset.name}"`);
+}
+
+async function removeRegistryPreset(preset: StudioPresetEntry): Promise<void> {
+  const proceed = window.confirm(`Delete preset "${preset.name}"?`);
+  if (!proceed) return;
+  await store.deletePreset(preset.id);
+  message.success(`Deleted preset "${preset.name}"`);
+}
+
 watch(() => route.query, (query) => {
   const nextFilters = parseRegistryQuery(query);
 
@@ -116,10 +157,32 @@ watch(currentFilters, (nextFilters) => {
           <n-switch v-model:value="supportsChartsOnly" />
         </label>
       </div>
-      <div class="panel-note">
-        {{ filteredCommands.length }} commands match the current facet set across {{ store.registry.sites.length }} sites.
-        <template v-if="!store.advancedMode"> Risky commands are hidden until advanced mode is enabled. </template>
+      <div class="panel-toolbar">
+        <div class="panel-note">
+          {{ filteredCommands.length }} commands match the current facet set across {{ store.registry.sites.length }} sites.
+          <template v-if="!store.advancedMode"> Risky commands are hidden until advanced mode is enabled. </template>
+        </div>
+        <div class="card-actions">
+          <n-tag size="small" type="info">Favorites {{ favoriteCount }}</n-tag>
+          <save-preset-button
+            button-label="Save View"
+            title="Save Registry View"
+            description="Persist the current filter combination so you can reopen this slice of the registry later."
+            :default-name="search ? `Registry · ${search}` : 'Registry View'"
+            :default-description="site !== 'all' ? `Filtered to ${site}` : ''"
+            :save="saveView"
+          />
+        </div>
       </div>
+    </n-card>
+
+    <n-card title="Saved Views" class="glass-card">
+      <preset-shelf
+        :presets="store.registryPresets"
+        empty-description="Save a Registry filter combination to make recurring investigations one click away."
+        @apply="applyRegistryPreset"
+        @remove="removeRegistryPreset"
+      />
     </n-card>
 
     <div class="command-grid">
@@ -129,9 +192,14 @@ watch(currentFilters, (nextFilters) => {
             <div class="eyebrow">{{ command.site }}</div>
             <h3>{{ command.command }}</h3>
           </div>
-          <n-tag size="small" :type="command.meta.risk === 'safe' ? 'success' : command.meta.risk === 'confirm' ? 'warning' : 'error'">
-            {{ command.meta.risk }}
-          </n-tag>
+          <div class="command-card__header-meta">
+            <n-button size="small" quaternary @click="toggleCommandFavorite(command)">
+              {{ store.favoriteCommandIds.has(command.command) ? 'Favorited' : 'Favorite' }}
+            </n-button>
+            <n-tag size="small" :type="command.meta.risk === 'safe' ? 'success' : command.meta.risk === 'confirm' ? 'warning' : 'error'">
+              {{ command.meta.risk }}
+            </n-tag>
+          </div>
         </div>
         <p>{{ command.description || 'No description available.' }}</p>
         <div class="chip-cloud">

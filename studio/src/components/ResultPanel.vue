@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue';
-import { NCard, NDataTable, NEmpty, NTabPane, NTabs, NTag } from 'naive-ui';
+import { NButton, NCard, NDataTable, NEmpty, NTabPane, NTabs, NTag, useMessage } from 'naive-ui';
+import { buildResultExports, type ResultExportArtifact } from '../lib/export';
 import { buildResultPresentation } from '../lib/results';
 
 const ChartPanel = defineAsyncComponent(() => import('./ChartPanel.vue'));
+const message = useMessage();
 
 const props = withDefaults(defineProps<{
   result?: unknown;
@@ -13,6 +15,11 @@ const props = withDefaults(defineProps<{
 });
 
 const presentation = computed(() => buildResultPresentation(props.result));
+const exportBundle = computed(() =>
+  presentation.value.summary.kind === 'empty'
+    ? null
+    : buildResultExports(props.title, props.result),
+);
 
 const columns = computed(() =>
   Object.keys(presentation.value.rows[0] ?? {}).map((key) => ({
@@ -23,6 +30,26 @@ const columns = computed(() =>
     },
   })),
 );
+
+async function copyArtifact(artifact: ResultExportArtifact): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(artifact.contents);
+    message.success(`Copied ${artifact.filename}`);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function downloadArtifact(artifact: ResultExportArtifact): void {
+  const blob = new Blob([artifact.contents], { type: artifact.mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = artifact.filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  message.success(`Exported ${artifact.filename}`);
+}
 </script>
 
 <template>
@@ -32,8 +59,23 @@ const columns = computed(() =>
     </template>
     <template v-else>
       <div class="result-panel__summary">
-        <n-tag type="warning" size="small">{{ presentation.summary.kind }}</n-tag>
-        <span>{{ presentation.summary.count }} units observed</span>
+        <div class="result-panel__summary-copy">
+          <n-tag type="warning" size="small">{{ presentation.summary.kind }}</n-tag>
+          <span>{{ presentation.summary.count }} units observed</span>
+        </div>
+        <div v-if="exportBundle" class="result-panel__exports">
+          <n-button size="small" quaternary @click="copyArtifact(exportBundle.json)">Copy JSON</n-button>
+          <n-button size="small" quaternary @click="downloadArtifact(exportBundle.json)">Download JSON</n-button>
+          <n-button size="small" quaternary @click="downloadArtifact(exportBundle.markdown)">Download Markdown</n-button>
+          <n-button
+            v-if="exportBundle.csv"
+            size="small"
+            quaternary
+            @click="downloadArtifact(exportBundle.csv)"
+          >
+            Download CSV
+          </n-button>
+        </div>
       </div>
 
       <div v-if="presentation.keyFacts.length" class="result-panel__facts">

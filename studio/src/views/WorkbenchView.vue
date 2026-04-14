@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NTag } from 'naive-ui';
+import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NTag, useMessage } from 'naive-ui';
+import PresetShelf from '../components/PresetShelf.vue';
 import ResultPanel from '../components/ResultPanel.vue';
+import SavePresetButton from '../components/SavePresetButton.vue';
+import { buildWorkbenchPresetState, readWorkbenchPresetState } from '../lib/preset-state';
 import { pickDefaultWorkbenchCommand } from '../lib/registry';
 import { buildWorkbenchQuery, parseWorkbenchQuery } from '../lib/routes';
 import { useStudioStore } from '../stores/studio';
-import type { StudioCommandArg, StudioHistoryEntry } from '../types';
+import type { StudioCommandArg, StudioHistoryEntry, StudioPresetEntry } from '../types';
 
 const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
 
 const formModel = reactive<Record<string, any>>({});
-const pendingHistoryArgs = ref<Record<string, unknown> | null>(null);
+const pendingFormArgs = ref<Record<string, unknown> | null>(store.consumeWorkbenchArgs());
 
 const initialWorkbenchState = parseWorkbenchQuery(route.query);
 if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
@@ -50,6 +54,9 @@ const command = computed(() =>
 
 const recentRuns = computed(() =>
   store.history.filter((entry) => entry.command === selectedCommandName.value).slice(0, 5),
+);
+const isFavoriteCommand = computed(() =>
+  command.value ? store.favoriteCommandIds.has(command.value.command) : false,
 );
 
 function inferFieldKind(arg: StudioCommandArg): 'select' | 'number' | 'boolean' | 'text' {
@@ -103,11 +110,15 @@ function applyArgsToForm(args: Record<string, unknown>): void {
   }
 }
 
+function queueArgs(args: Record<string, unknown>): void {
+  pendingFormArgs.value = { ...args };
+}
+
 watch(command, (nextCommand) => {
   resetForm(nextCommand?.command ?? null);
-  if (pendingHistoryArgs.value) {
-    applyArgsToForm(pendingHistoryArgs.value);
-    pendingHistoryArgs.value = null;
+  if (pendingFormArgs.value) {
+    applyArgsToForm(pendingFormArgs.value);
+    pendingFormArgs.value = null;
   }
 }, { immediate: true });
 
@@ -125,6 +136,11 @@ watch(() => route.query, (query) => {
 
   if (nextCommand && nextCommand !== store.selectedCommand) {
     store.setSelectedCommand(nextCommand);
+  }
+
+  const stagedArgs = store.consumeWorkbenchArgs();
+  if (stagedArgs) {
+    queueArgs(stagedArgs);
   }
 });
 
@@ -180,6 +196,30 @@ function collectArgs(): Record<string, unknown> {
   return args;
 }
 
+async function toggleCommandFavorite(): Promise<void> {
+  if (!command.value) return;
+
+  const nextFavorite = !isFavoriteCommand.value;
+  await store.toggleFavorite('command', command.value.command, nextFavorite);
+  message.success(nextFavorite ? `Favorited ${command.value.command}` : `Removed ${command.value.command} from favorites`);
+}
+
+async function saveWorkbenchPreset(input: { name: string; description: string }): Promise<void> {
+  if (!command.value) return;
+
+  await store.savePreset({
+    kind: 'workbench',
+    name: input.name,
+    description: input.description || null,
+    state: buildWorkbenchPresetState({
+      command: command.value.command,
+      args: collectArgs(),
+      advancedMode: store.advancedMode,
+    }),
+  });
+  message.success(`Saved workbench preset "${input.name}"`);
+}
+
 async function handleRun(): Promise<void> {
   if (!command.value) return;
 
@@ -196,13 +236,33 @@ function selectCommand(commandName: string): void {
 }
 
 function reuseHistoryEntry(entry: StudioHistoryEntry): void {
-  pendingHistoryArgs.value = entry.args;
+  queueArgs(entry.args);
   if (selectedCommandName.value !== entry.command) {
     selectedCommandName.value = entry.command;
     return;
   }
   applyArgsToForm(entry.args);
-  pendingHistoryArgs.value = null;
+  pendingFormArgs.value = null;
+}
+
+function applyWorkbenchPreset(preset: StudioPresetEntry): void {
+  const state = readWorkbenchPresetState(preset.state);
+  store.setAdvancedMode(state.advancedMode);
+  queueArgs(state.args);
+  if (selectedCommandName.value !== state.command) {
+    selectedCommandName.value = state.command;
+  } else {
+    applyArgsToForm(state.args);
+    pendingFormArgs.value = null;
+  }
+  message.success(`Applied preset "${preset.name}"`);
+}
+
+async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
+  const proceed = window.confirm(`Delete preset "${preset.name}"?`);
+  if (!proceed) return;
+  await store.deletePreset(preset.id);
+  message.success(`Deleted preset "${preset.name}"`);
 }
 </script>
 
@@ -222,6 +282,19 @@ function reuseHistoryEntry(entry: StudioHistoryEntry): void {
           </div>
           <p>{{ command.description || 'No description available.' }}</p>
           <pre class="json-block cli-block">{{ cliPreview }}</pre>
+          <div class="card-actions">
+            <n-button quaternary @click="toggleCommandFavorite()">
+              {{ isFavoriteCommand ? 'Favorited' : 'Favorite Command' }}
+            </n-button>
+            <save-preset-button
+              button-label="Save Preset"
+              title="Save Workbench Preset"
+              description="Persist the current command selection and argument set so it can be replayed from Workbench or Overview."
+              :default-name="command.command"
+              :default-description="command.description || ''"
+              :save="saveWorkbenchPreset"
+            />
+          </div>
         </div>
       </n-card>
 
@@ -240,6 +313,15 @@ function reuseHistoryEntry(entry: StudioHistoryEntry): void {
           </div>
         </div>
         <div v-else class="panel-note">No stored history for this command yet.</div>
+      </n-card>
+
+      <n-card title="Saved Presets" class="glass-card">
+        <preset-shelf
+          :presets="store.workbenchPresets"
+          empty-description="Save a command plus argument bundle to replay it here later."
+          @apply="applyWorkbenchPreset"
+          @remove="removeWorkbenchPreset"
+        />
       </n-card>
     </div>
 
@@ -281,6 +363,15 @@ function reuseHistoryEntry(entry: StudioHistoryEntry): void {
         <div class="card-actions">
           <n-button type="primary" :loading="store.runningCommand" @click="handleRun()">Run Command</n-button>
           <n-button tertiary @click="resetForm(command?.command ?? null)">Reset Args</n-button>
+          <save-preset-button
+            button-label="Save Preset"
+            title="Save Workbench Preset"
+            description="Capture the current command and argument state from the form."
+            :default-name="command ? `${command.command} preset` : 'Workbench Preset'"
+            :default-description="command?.description || ''"
+            :disabled="!command"
+            :save="saveWorkbenchPreset"
+          />
         </div>
       </n-card>
 
