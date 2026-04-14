@@ -6,6 +6,7 @@ import PresetShelf from '../components/PresetShelf.vue';
 import ResultPanel from '../components/ResultPanel.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
 import { buildResultComparison } from '../lib/compare';
+import { useStudioI18n } from '../lib/i18n';
 import { buildWorkbenchPresetState, readWorkbenchPresetState } from '../lib/preset-state';
 import { buildCommandReadiness } from '../lib/readiness';
 import { pickDefaultWorkbenchCommand } from '../lib/registry';
@@ -17,6 +18,7 @@ const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
+const { t } = useStudioI18n();
 
 const formModel = reactive<Record<string, any>>({});
 const pendingFormArgs = ref<Record<string, unknown> | null>(store.consumeWorkbenchArgs());
@@ -250,7 +252,7 @@ async function toggleCommandFavorite(): Promise<void> {
 
   const nextFavorite = !isFavoriteCommand.value;
   await store.toggleFavorite('command', command.value.command, nextFavorite);
-  message.success(nextFavorite ? `Favorited ${command.value.command}` : `Removed ${command.value.command} from favorites`);
+  message.success(nextFavorite ? t('workbench.favoriteSuccess', { value: command.value.command }) : t('workbench.unfavoriteSuccess', { value: command.value.command }));
 }
 
 async function saveWorkbenchPreset(input: { name: string; description: string }): Promise<void> {
@@ -266,14 +268,14 @@ async function saveWorkbenchPreset(input: { name: string; description: string })
       advancedMode: store.advancedMode,
     }),
   });
-  message.success(`Saved workbench preset "${input.name}"`);
+  message.success(t('workbench.savePresetSuccess', { value: input.name }));
 }
 
 async function handleRun(): Promise<void> {
   if (!command.value) return;
 
   if (command.value.meta.risk !== 'safe') {
-    const proceed = window.confirm(`"${command.value.command}" is marked as ${command.value.meta.risk}. Continue?`);
+    const proceed = window.confirm(t('workbench.riskyConfirm', { value: command.value.command, risk: command.value.meta.risk }));
     if (!proceed) return;
   }
 
@@ -288,7 +290,7 @@ async function captureCommandSnapshot(): Promise<void> {
     command: command.value.command,
     args: collectArgs(),
   });
-  message.success(`Captured snapshot for ${command.value.command}`);
+  message.success(t('workbench.captureSuccess', { value: command.value.command }));
 }
 
 function selectCommand(commandName: string): void {
@@ -323,23 +325,23 @@ function applyWorkbenchPreset(preset: StudioPresetEntry): void {
     applyArgsToForm(state.args);
     pendingFormArgs.value = null;
   }
-  message.success(`Applied preset "${preset.name}"`);
+  message.success(t('workbench.applyPresetSuccess', { value: preset.name }));
 }
 
 async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
-  const proceed = window.confirm(`Delete preset "${preset.name}"?`);
+  const proceed = window.confirm(t('workbench.deletePresetConfirm', { value: preset.name }));
   if (!proceed) return;
   await store.deletePreset(preset.id);
-  message.success(`Deleted preset "${preset.name}"`);
+  message.success(t('workbench.deletePresetSuccess', { value: preset.name }));
 }
 </script>
 
 <template>
   <section class="page-grid workbench-layout">
     <div class="workbench-column">
-      <n-card title="Command Selection" class="glass-card">
+      <n-card :title="t('workbench.selection')" class="glass-card">
         <n-select v-model:value="selectedCommandName" :options="commandOptions" filterable />
-        <div v-if="!store.advancedMode" class="panel-note">Advanced mode is off, so confirm/dangerous commands are hidden from the picker.</div>
+        <div v-if="!store.advancedMode" class="panel-note">{{ t('workbench.advancedHidden') }}</div>
         <n-alert
           v-if="commandReadiness"
           :type="readinessAlertType(commandReadiness.tone)"
@@ -349,7 +351,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
             <strong>{{ commandReadiness.title }}</strong>
             <div v-for="bullet in commandReadiness.bullets" :key="bullet" class="panel-note">{{ bullet }}</div>
             <div v-if="commandReadiness.needsOps" class="card-actions">
-              <n-button size="small" tertiary @click="openOps()">Open Ops</n-button>
+                <n-button size="small" tertiary @click="openOps()">{{ t('workbench.openOps') }}</n-button>
             </div>
           </div>
         </n-alert>
@@ -362,16 +364,16 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
               {{ command.meta.risk }}
             </n-tag>
           </div>
-          <p>{{ command.description || 'No description available.' }}</p>
+          <p>{{ command.description || t('common.noDescription') }}</p>
           <pre class="json-block cli-block">{{ cliPreview }}</pre>
           <div class="card-actions">
             <n-button quaternary @click="toggleCommandFavorite()">
-              {{ isFavoriteCommand ? 'Favorited' : 'Favorite Command' }}
+              {{ isFavoriteCommand ? t('registry.favorited') : t('workbench.favoriteCommand') }}
             </n-button>
             <save-preset-button
-              button-label="Save Preset"
-              title="Save Workbench Preset"
-              description="Persist the current command selection and argument set so it can be replayed from Workbench or Overview."
+              :button-label="t('workbench.savePreset')"
+              :title="t('workbench.savePresetTitle')"
+              :description="t('workbench.savePresetDescription')"
               :default-name="command.command"
               :default-description="command.description || ''"
               :save="saveWorkbenchPreset"
@@ -380,7 +382,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
         </div>
       </n-card>
 
-      <n-card title="Recent Runs" class="glass-card">
+      <n-card :title="t('workbench.recentRuns')" class="glass-card">
         <div v-if="recentRuns.length" class="stack-list">
           <div v-for="entry in recentRuns" :key="entry.id" class="stack-row">
             <button class="stack-row__primary" @click="selectCommand(entry.command)">
@@ -388,25 +390,25 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
               <span>{{ entry.startedAt }}</span>
             </button>
             <div class="stack-row__meta">
-              <n-button size="small" quaternary @click.stop="reuseHistoryEntry(entry)">Reuse Args</n-button>
+              <n-button size="small" quaternary @click.stop="reuseHistoryEntry(entry)">{{ t('workbench.reuseArgs') }}</n-button>
               <n-tag :type="entry.status === 'success' ? 'success' : 'error'" size="small">{{ entry.status }}</n-tag>
               <span>{{ entry.durationMs }} ms</span>
             </div>
           </div>
         </div>
-        <div v-else class="panel-note">No stored history for this command yet.</div>
+        <div v-else class="panel-note">{{ t('workbench.noHistory') }}</div>
       </n-card>
 
-      <n-card title="Saved Presets" class="glass-card">
+      <n-card :title="t('workbench.savedPresets')" class="glass-card">
         <preset-shelf
           :presets="store.workbenchPresets"
-          empty-description="Save a command plus argument bundle to replay it here later."
+          :empty-description="t('workbench.savedPresetsEmpty')"
           @apply="applyWorkbenchPreset"
           @remove="removeWorkbenchPreset"
         />
       </n-card>
 
-      <n-card title="Command Snapshots" class="glass-card">
+      <n-card :title="t('workbench.snapshots')" class="glass-card">
         <div v-if="commandSnapshots.length" class="stack-list">
           <div v-for="snapshot in commandSnapshots.slice(0, 5)" :key="snapshot.id" class="stack-row">
             <div>
@@ -419,12 +421,12 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
             </div>
           </div>
         </div>
-        <div v-else class="panel-note">No command snapshots yet. Use Capture Snapshot after filling args.</div>
+        <div v-else class="panel-note">{{ t('workbench.noSnapshots') }}</div>
       </n-card>
     </div>
 
     <div class="workbench-column workbench-column--wide">
-      <n-card title="Arguments" class="glass-card">
+      <n-card :title="t('workbench.arguments')" class="glass-card">
         <n-alert v-if="store.executionError" type="error" class="page-alert">
           {{ store.executionError }}
         </n-alert>
@@ -434,7 +436,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
             v-for="arg in command.args"
             :key="arg.name"
             :label="arg.name"
-            :feedback="arg.help || (arg.required ? 'Required argument' : '')"
+            :feedback="arg.help || (arg.required ? t('workbench.requiredArgument') : '')"
           >
             <n-select
               v-if="inferFieldKind(arg) === 'select'"
@@ -447,25 +449,25 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
               class="field-fill"
             />
             <div v-else-if="inferFieldKind(arg) === 'boolean'" class="switch-inline switch-inline--wide">
-              <span>{{ arg.help || 'Toggle this flag' }}</span>
+              <span>{{ arg.help || t('workbench.toggleFlag') }}</span>
               <n-switch v-model:value="formModel[arg.name]" />
             </div>
             <n-input
               v-else
               v-model:value="formModel[arg.name]"
-              :placeholder="arg.default !== undefined ? `Default: ${arg.default}` : 'Enter a value'"
+              :placeholder="arg.default !== undefined ? t('workbench.defaultValue', { value: String(arg.default) }) : t('workbench.enterValue')"
             />
           </n-form-item>
         </n-form>
 
         <div class="card-actions">
-          <n-button type="primary" :loading="store.runningCommand" @click="handleRun()">Run Command</n-button>
-          <n-button tertiary :loading="store.runningSnapshot" @click="captureCommandSnapshot()">Capture Snapshot</n-button>
-          <n-button tertiary @click="resetForm(command?.command ?? null)">Reset Args</n-button>
+          <n-button type="primary" :loading="store.runningCommand" @click="handleRun()">{{ t('workbench.runCommand') }}</n-button>
+          <n-button tertiary :loading="store.runningSnapshot" @click="captureCommandSnapshot()">{{ t('workbench.captureSnapshot') }}</n-button>
+          <n-button tertiary @click="resetForm(command?.command ?? null)">{{ t('workbench.resetArgs') }}</n-button>
           <save-preset-button
-            button-label="Save Preset"
-            title="Save Workbench Preset"
-            description="Capture the current command and argument state from the form."
+            :button-label="t('workbench.savePreset')"
+            :title="t('workbench.savePresetTitle')"
+            :description="t('workbench.savePresetDescription')"
             :default-name="command ? `${command.command} preset` : 'Workbench Preset'"
             :default-description="command?.description || ''"
             :disabled="!command"
@@ -474,22 +476,22 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
         </div>
       </n-card>
 
-      <n-card title="Compare Recent Runs" class="glass-card">
+      <n-card :title="t('workbench.compareRuns')" class="glass-card">
         <template v-if="recentRuns.length">
           <div class="compare-grid">
-            <n-select v-model:value="leftRunId" :options="runOptions" placeholder="Base run" />
-            <n-select v-model:value="rightRunId" :options="runOptions" placeholder="Target run" />
+            <n-select v-model:value="leftRunId" :options="runOptions" :placeholder="t('workbench.baseRun')" />
+            <n-select v-model:value="rightRunId" :options="runOptions" :placeholder="t('workbench.targetRun')" />
           </div>
           <result-panel
-            :title="command ? `${command.command} run diff` : 'Run diff'"
+            :title="command ? t('workbench.runDiff', { value: command.command }) : t('workbench.compareRuns')"
             :result="runComparisonResult"
           />
         </template>
-        <n-empty v-else description="Run the command a few times to compare result changes." />
+        <n-empty v-else :description="t('workbench.compareEmpty')" />
       </n-card>
 
       <result-panel
-        :title="command ? `${command.command} output` : 'Result'"
+        :title="command ? t('workbench.output', { value: command.command }) : t('workbench.defaultOutput')"
         :result="currentResult"
       />
     </div>

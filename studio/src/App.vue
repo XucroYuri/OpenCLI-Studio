@@ -1,23 +1,31 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter, type LocationQueryRaw } from 'vue-router';
-import { NAlert, NConfigProvider, NMessageProvider, NSpin, NSwitch, NTag, type GlobalThemeOverrides } from 'naive-ui';
+import { NAlert, NButton, NButtonGroup, NConfigProvider, NMessageProvider, NSpin, NSwitch, NTag, type GlobalThemeOverrides } from 'naive-ui';
+import { useStudioI18n } from './lib/i18n';
 import { useStudioStore } from './stores/studio';
 
 const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
+const { locale, setLocale, t } = useStudioI18n();
 
-const navigation = [
-  { to: '/', label: 'Overview' },
-  { to: '/registry', label: 'Registry' },
-  { to: '/workbench', label: 'Workbench' },
-  { to: '/insights', label: 'Insights' },
-  { to: '/ops', label: 'Ops' },
-];
+const navigation = computed(() => [
+  { to: '/', label: t('app.nav.overview'), short: 'O1' },
+  { to: '/registry', label: t('app.nav.registry'), short: 'R2' },
+  { to: '/workbench', label: t('app.nav.workbench'), short: 'W3' },
+  { to: '/insights', label: t('app.nav.insights'), short: 'I4' },
+  { to: '/ops', label: t('app.nav.ops'), short: 'X5' },
+]);
 
-const pageTitle = computed(() => String(route.meta.title ?? 'OpenCLI Studio'));
-const pageDescription = computed(() => String(route.meta.description ?? 'Local-first control surface for the OpenCLI registry.'));
+const pageTitle = computed(() => {
+  const key = String(route.meta.titleKey ?? '');
+  return key ? t(key) : 'OpenCLI Studio';
+});
+const pageDescription = computed(() => {
+  const key = String(route.meta.descriptionKey ?? '');
+  return key ? t(key) : t('app.shell.description');
+});
 const advancedModeModel = computed({
   get: () => store.advancedMode,
   set: (value: boolean) => {
@@ -49,7 +57,7 @@ const themeOverrides: GlobalThemeOverrides = {
     color: 'rgba(8, 20, 30, 0.86)',
   },
   Input: {
-    color: 'rgba(13, 29, 42, 0.92)',
+    color: 'rgba(14, 24, 37, 0.92)',
     borderHover: '1px solid rgba(242, 140, 40, 0.5)',
   },
   Select: {
@@ -72,12 +80,9 @@ onMounted(() => {
       <div class="app-shell">
         <aside class="app-nav">
           <div class="brand-block">
-            <div class="eyebrow">OpenCLI Studio</div>
-            <h1>Local-first web console for the existing CLI universe.</h1>
-            <p>
-              Contributor-oriented front-end surfaces for the OpenCLI registry:
-              browse, execute, inspect, and promote high-value command families into dashboards.
-            </p>
+            <div class="eyebrow">{{ t('app.shell.eyebrow') }}</div>
+            <h1>{{ t('app.shell.title') }}</h1>
+            <p>{{ t('app.shell.description') }}</p>
           </div>
 
           <nav class="nav-links">
@@ -88,29 +93,38 @@ onMounted(() => {
               class="nav-link"
               :class="{ 'nav-link--active': route.path === item.to }"
             >
-              {{ item.label }}
+              <span class="nav-link__short">{{ item.short }}</span>
+              <span>{{ item.label }}</span>
             </RouterLink>
           </nav>
 
+          <div class="nav-tools">
+            <div class="nav-tools__label">{{ t('app.shell.language') }}</div>
+            <n-button-group>
+              <n-button size="small" :type="locale === 'en' ? 'primary' : 'default'" @click="setLocale('en')">EN</n-button>
+              <n-button size="small" :type="locale === 'zh-CN' ? 'primary' : 'default'" @click="setLocale('zh-CN')">中</n-button>
+            </n-button-group>
+          </div>
+
           <div class="nav-status">
             <div class="nav-status__row">
-              <span>Commands</span>
+              <span>{{ t('app.shell.status.commands') }}</span>
               <strong>{{ store.env?.commandCount ?? 0 }}</strong>
             </div>
             <div class="nav-status__row">
-              <span>Browser-backed</span>
+              <span>{{ t('app.shell.status.browser') }}</span>
               <strong>{{ store.env?.browserCommandCount ?? 0 }}</strong>
             </div>
             <div class="nav-status__row">
-              <span>Recipes</span>
+              <span>{{ t('app.shell.status.recipes') }}</span>
               <strong>{{ store.recipes.length }}</strong>
             </div>
             <div class="nav-status__row">
-              <span>Plugins</span>
+              <span>{{ t('app.shell.status.plugins') }}</span>
               <strong>{{ store.plugins.length }}</strong>
             </div>
             <div class="nav-status__row">
-              <span>External CLIs</span>
+              <span>{{ t('app.shell.status.external') }}</span>
               <strong>{{ store.externalClis.length }}</strong>
             </div>
           </div>
@@ -118,19 +132,19 @@ onMounted(() => {
 
         <div class="app-main">
           <header class="topbar">
-            <div>
-              <div class="eyebrow">Current surface</div>
+            <div class="topbar__copy">
+              <div class="eyebrow">{{ t('app.shell.currentSurface') }}</div>
               <h2>{{ pageTitle }}</h2>
               <p>{{ pageDescription }}</p>
             </div>
             <div class="topbar__meta">
               <label class="switch-inline topbar__switch">
-                <span>Advanced mode</span>
+                <span>{{ t('app.shell.advancedMode') }}</span>
                 <n-switch v-model:value="advancedModeModel" />
               </label>
-              <n-tag size="small" type="success">CLI inherited</n-tag>
-              <n-tag size="small" type="info">Local execution</n-tag>
-              <n-tag size="small" type="warning">Contributor preview</n-tag>
+              <n-tag size="small" type="success">{{ t('app.shell.inherited') }}</n-tag>
+              <n-tag size="small" type="info">{{ t('app.shell.local') }}</n-tag>
+              <n-tag size="small" type="warning">{{ t('app.shell.preview') }}</n-tag>
             </div>
           </header>
 

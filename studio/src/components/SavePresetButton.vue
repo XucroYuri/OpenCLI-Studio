@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
 import { NButton, NForm, NFormItem, NInput, NModal } from 'naive-ui';
+import { useStudioI18n } from '../lib/i18n';
 
 const props = withDefaults(defineProps<{
   buttonLabel?: string;
@@ -11,11 +12,12 @@ const props = withDefaults(defineProps<{
   disabled?: boolean;
   save: (input: { name: string; description: string }) => Promise<void> | void;
 }>(), {
-  buttonLabel: 'Save Preset',
+  buttonLabel: '',
   description: '',
   defaultDescription: '',
   disabled: false,
 });
+const { t } = useStudioI18n();
 
 const showModal = ref(false);
 const saving = ref(false);
@@ -47,26 +49,26 @@ async function handleSave(): Promise<void> {
 </script>
 
 <template>
-  <n-button quaternary :disabled="disabled" @click="showModal = true">{{ buttonLabel }}</n-button>
+  <n-button quaternary :disabled="disabled" @click="showModal = true">{{ buttonLabel || t('preset.modal.save') }}</n-button>
 
   <n-modal v-model:show="showModal" preset="card" class="preset-modal" :title="title" :bordered="false">
     <p v-if="description" class="panel-note">{{ description }}</p>
     <n-form label-placement="top">
-      <n-form-item label="Preset name">
-        <n-input v-model:value="form.name" placeholder="Give this preset a memorable name" />
+      <n-form-item :label="t('preset.modal.name')">
+        <n-input v-model:value="form.name" :placeholder="t('preset.modal.namePlaceholder')" />
       </n-form-item>
-      <n-form-item label="Description">
+      <n-form-item :label="t('preset.modal.description')">
         <n-input
           v-model:value="form.description"
           type="textarea"
-          placeholder="Optional context for when to use this preset"
+          :placeholder="t('preset.modal.descriptionPlaceholder')"
           :autosize="{ minRows: 3, maxRows: 5 }"
         />
       </n-form-item>
     </n-form>
     <div class="card-actions">
-      <n-button type="primary" :loading="saving" :disabled="!form.name.trim()" @click="handleSave()">Save Preset</n-button>
-      <n-button tertiary @click="showModal = false">Cancel</n-button>
+      <n-button type="primary" :loading="saving" :disabled="!form.name.trim()" @click="handleSave()">{{ t('preset.modal.save') }}</n-button>
+      <n-button tertiary @click="showModal = false">{{ t('preset.modal.cancel') }}</n-button>
     </div>
   </n-modal>
 </template>

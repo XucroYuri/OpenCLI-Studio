@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { NButton, NCard, NEmpty, NSpin, NTag, useMessage } from 'naive-ui';
 import PresetShelf from '../components/PresetShelf.vue';
 import { buildOverviewMetrics } from '../lib/dashboard';
+import { useStudioI18n } from '../lib/i18n';
 import { buildInsightQuery, buildRegistryQuery, buildWorkbenchQuery } from '../lib/routes';
 import { readInsightPresetState, readRegistryPresetState, readWorkbenchPresetState } from '../lib/preset-state';
 import { useStudioStore } from '../stores/studio';
@@ -12,6 +13,7 @@ import type { StudioPresetEntry } from '../types';
 const store = useStudioStore();
 const router = useRouter();
 const message = useMessage();
+const { t } = useStudioI18n();
 
 const metrics = computed(() => buildOverviewMetrics({
   commands: store.registry.commands,
@@ -102,10 +104,10 @@ async function applyPreset(preset: StudioPresetEntry): Promise<void> {
 }
 
 async function removePreset(preset: StudioPresetEntry): Promise<void> {
-  const proceed = window.confirm(`Delete preset "${preset.name}"?`);
+  const proceed = window.confirm(t('registry.deletePresetConfirm', { value: preset.name }));
   if (!proceed) return;
   await store.deletePreset(preset.id);
-  message.success(`Deleted preset "${preset.name}"`);
+  message.success(t('registry.deletePresetSuccess', { value: preset.name }));
 }
 
 function openSnapshotSource(sourceKind: string, sourceId: string, command: string): void {
@@ -122,63 +124,60 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
   <section class="page-grid">
     <n-card class="hero-card">
       <div class="hero-card__copy">
-        <div class="eyebrow">Contributor cockpit</div>
-        <h3>OpenCLI Studio makes the existing CLI registry legible, runnable, and analysable.</h3>
-        <p>
-          The web surface stays local-first: browse the full registry, execute commands with form-driven inputs,
-          and promote high-value trend workflows into recipe pages without weakening the current CLI model.
-        </p>
+        <div class="eyebrow">{{ t('overview.hero.eyebrow') }}</div>
+        <h3>{{ t('overview.hero.title') }}</h3>
+        <p>{{ t('overview.hero.description') }}</p>
       </div>
       <div class="hero-card__actions">
-        <n-button type="primary" size="large" @click="openWorkbench(store.selectedCommand)">Open Workbench</n-button>
-        <n-button tertiary size="large" @click="openInsight()">Open Insights</n-button>
-        <n-button quaternary size="large" :loading="store.runningDoctor" @click="handleDoctor()">Run Doctor</n-button>
+        <n-button type="primary" size="large" @click="openWorkbench(store.selectedCommand)">{{ t('overview.hero.workbench') }}</n-button>
+        <n-button tertiary size="large" @click="openInsight()">{{ t('overview.hero.insights') }}</n-button>
+        <n-button quaternary size="large" :loading="store.runningDoctor" @click="handleDoctor()">{{ t('overview.hero.doctor') }}</n-button>
       </div>
       <div class="metrics-grid">
         <div class="metric-tile">
-          <span>Total commands</span>
+          <span>{{ t('overview.metrics.total') }}</span>
           <strong>{{ metrics.totalCommands }}</strong>
         </div>
         <div class="metric-tile">
-          <span>Browser-backed</span>
+          <span>{{ t('overview.metrics.browser') }}</span>
           <strong>{{ metrics.browserCommands }}</strong>
         </div>
         <div class="metric-tile">
-          <span>Public-safe</span>
+          <span>{{ t('overview.metrics.public') }}</span>
           <strong>{{ metrics.publicCommands }}</strong>
         </div>
         <div class="metric-tile">
-          <span>Recipes</span>
+          <span>{{ t('overview.metrics.recipes') }}</span>
           <strong>{{ metrics.recipes }}</strong>
         </div>
         <div class="metric-tile">
-          <span>Snapshot jobs</span>
+          <span>{{ t('overview.metrics.jobs') }}</span>
           <strong>{{ metrics.jobs }}</strong>
         </div>
         <div class="metric-tile">
-          <span>Snapshots</span>
+          <span>{{ t('overview.metrics.snapshots') }}</span>
           <strong>{{ metrics.snapshots }}</strong>
         </div>
       </div>
     </n-card>
 
     <div class="split-grid">
-      <n-card title="Environment" class="glass-card">
+      <n-card :title="t('overview.environment')" class="glass-card">
         <div v-if="store.env" class="kv-grid">
           <div class="kv-item">
-            <span>Platform</span>
+            <span>{{ t('overview.platform') }}</span>
             <strong>{{ store.env.platform }}</strong>
           </div>
           <div class="kv-item">
-            <span>Node</span>
+            <span>{{ t('overview.node') }}</span>
             <strong>{{ store.env.nodeVersion }}</strong>
           </div>
           <div class="kv-item">
-            <span>Storage</span>
+            <span>{{ t('overview.storage') }}</span>
             <strong>{{ store.env.storageDir }}</strong>
           </div>
           <div class="kv-item">
-            <span>Command surface</span>
+            <span>{{ t('overview.commandSurface') }}</span>
             <strong>{{ store.env.commandCount }} total / {{ store.env.browserCommandCount }} browser</strong>
           </div>
         </div>
@@ -186,11 +185,11 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
           <div v-if="store.doctor" class="doctor-block">
             <pre class="json-block">{{ JSON.stringify(store.doctor, null, 2) }}</pre>
           </div>
-          <n-empty v-else description="Doctor has not been run in this session." />
+          <n-empty v-else :description="t('overview.doctorEmpty')" />
         </n-spin>
       </n-card>
 
-      <n-card title="Recent Activity" class="glass-card">
+      <n-card :title="t('overview.recentActivity')" class="glass-card">
         <div v-if="recentRuns.length" class="stack-list">
           <button v-for="entry in recentRuns" :key="entry.id" class="stack-row" @click="openWorkbench(entry.command)">
             <div>
@@ -203,33 +202,33 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
             </div>
           </button>
         </div>
-        <n-empty v-else description="No runs captured yet." />
+        <n-empty v-else :description="t('overview.noRuns')" />
       </n-card>
     </div>
 
     <div class="split-grid">
-      <n-card title="Snapshot Jobs" class="glass-card">
+      <n-card :title="t('overview.snapshotJobs')" class="glass-card">
         <div v-if="activeJobs.length" class="stack-list">
           <div v-for="job in activeJobs" :key="job.id" class="stack-row">
             <button class="stack-row__primary" @click="openSnapshotSource(job.sourceKind, job.sourceId, job.command)">
               <strong>{{ job.name }}</strong>
-              <span>{{ job.command }} · every {{ job.intervalMinutes }} min</span>
+              <span>{{ job.command }} · {{ t('overview.everyMinutes', { value: job.intervalMinutes }) }}</span>
             </button>
             <div class="stack-row__meta">
               <n-tag size="small" :type="job.lastStatus === 'error' ? 'error' : job.lastStatus === 'success' ? 'success' : 'warning'">
                 {{ job.lastStatus }}
               </n-tag>
-              <span>{{ job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : 'Not scheduled' }}</span>
+              <span>{{ job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : t('common.notScheduled') }}</span>
             </div>
           </div>
         </div>
-        <n-empty v-else description="No active snapshot jobs yet." />
+        <n-empty v-else :description="t('overview.noJobs')" />
       </n-card>
 
-      <n-card title="Recent Snapshots" class="glass-card">
+      <n-card :title="t('overview.recentSnapshots')" class="glass-card">
         <div class="card-actions card-actions--between">
-          <div class="panel-note">Latest captured snapshots across recipes and command-level monitoring.</div>
-          <n-button size="small" quaternary :loading="store.runningSnapshot" @click="refreshSnapshots()">Refresh</n-button>
+          <div class="panel-note">{{ t('overview.snapshotNote') }}</div>
+          <n-button size="small" quaternary :loading="store.runningSnapshot" @click="refreshSnapshots()">{{ t('common.refresh') }}</n-button>
         </div>
         <div v-if="recentSnapshots.length" class="stack-list">
           <button
@@ -248,15 +247,15 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
             </div>
           </button>
         </div>
-        <n-empty v-else description="No snapshots captured yet." />
+        <n-empty v-else :description="t('overview.noSnapshots')" />
       </n-card>
     </div>
 
     <div class="split-grid">
-      <n-card title="Favorites" class="glass-card">
+      <n-card :title="t('overview.favorites')" class="glass-card">
         <div class="favorites-block">
           <div>
-            <div class="eyebrow">Commands</div>
+            <div class="eyebrow">{{ t('overview.commands') }}</div>
             <div v-if="favoriteCommands.length" class="stack-list">
               <button
                 v-for="command in favoriteCommands"
@@ -271,11 +270,11 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
                 <n-tag size="small" type="info">{{ command.meta.capability }}</n-tag>
               </button>
             </div>
-            <n-empty v-else description="Favorite commands will appear here." />
+            <n-empty v-else :description="t('overview.favoriteCommandsEmpty')" />
           </div>
 
           <div>
-            <div class="eyebrow">Recipes</div>
+            <div class="eyebrow">{{ t('overview.recipes') }}</div>
             <div v-if="favoriteRecipes.length" class="stack-list">
               <button
                 v-for="recipe in favoriteRecipes"
@@ -287,18 +286,18 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
                   <strong>{{ recipe.title }}</strong>
                   <span>{{ recipe.command }}</span>
                 </div>
-                <n-tag size="small" type="warning">recipe</n-tag>
+                <n-tag size="small" type="warning">{{ t('overview.recipeBadge') }}</n-tag>
               </button>
             </div>
-            <n-empty v-else description="Favorite recipes will appear here." />
+            <n-empty v-else :description="t('overview.favoriteRecipesEmpty')" />
           </div>
         </div>
       </n-card>
 
-      <n-card title="Saved Presets" class="glass-card">
+      <n-card :title="t('overview.savedPresets')" class="glass-card">
         <preset-shelf
           :presets="recentPresets"
-          empty-description="Save Registry views, Workbench setups, or Insight recipe states to reuse them here."
+          :empty-description="t('overview.savedPresetsEmpty')"
           @apply="applyPreset"
           @remove="removePreset"
         />
@@ -306,7 +305,7 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
     </div>
 
     <div class="split-grid">
-      <n-card title="Registry Shape" class="glass-card">
+      <n-card :title="t('overview.registryShape')" class="glass-card">
         <div class="chip-cloud">
           <button v-for="site in leadingSites" :key="site.site" class="chip" @click="router.push({ name: 'registry', query: { site: site.site } })">
             <span>{{ site.site }}</span>
@@ -315,7 +314,7 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
         </div>
       </n-card>
 
-      <n-card title="Featured Recipes" class="glass-card">
+      <n-card :title="t('overview.featuredRecipes')" class="glass-card">
         <div v-if="featuredRecipes.length" class="recipe-grid">
           <button v-for="recipe in featuredRecipes" :key="recipe.id" class="recipe-card" @click="openInsight(recipe.id)">
             <div class="eyebrow">{{ recipe.command }}</div>
@@ -326,7 +325,7 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
             </div>
           </button>
         </div>
-        <n-empty v-else description="No recipes available for the current registry." />
+        <n-empty v-else :description="t('overview.registrySitesEmpty')" />
       </n-card>
     </div>
   </section>

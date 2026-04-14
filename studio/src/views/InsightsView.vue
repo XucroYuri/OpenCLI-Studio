@@ -6,6 +6,7 @@ import PresetShelf from '../components/PresetShelf.vue';
 import ResultPanel from '../components/ResultPanel.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
 import { buildResultComparison } from '../lib/compare';
+import { useStudioI18n } from '../lib/i18n';
 import { buildInsightPresetState, readInsightPresetState } from '../lib/preset-state';
 import { buildCommandReadiness } from '../lib/readiness';
 import { buildInsightQuery, buildWorkbenchQuery, parseInsightQuery } from '../lib/routes';
@@ -17,6 +18,7 @@ const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
+const { t } = useStudioI18n();
 
 const recipeModel = reactive<Record<string, any>>({});
 const jobModel = reactive({
@@ -110,13 +112,13 @@ const snapshotComparisonResult = computed(() => {
   return buildResultComparison(leftSnapshot.value.result, rightSnapshot.value.result);
 });
 
-const intervalOptions = [
-  { label: '15 min', value: 15 },
-  { label: '60 min', value: 60 },
-  { label: '180 min', value: 180 },
-  { label: '360 min', value: 360 },
-  { label: '1440 min', value: 1440 },
-];
+const intervalOptions = computed(() => [
+  { label: t('insights.intervalMinutes', { value: 15 }), value: 15 },
+  { label: t('insights.intervalMinutes', { value: 60 }), value: 60 },
+  { label: t('insights.intervalMinutes', { value: 180 }), value: 180 },
+  { label: t('insights.intervalMinutes', { value: 360 }), value: 360 },
+  { label: t('insights.intervalMinutes', { value: 1440 }), value: 1440 },
+]);
 
 function normalizeInputValue(value: unknown): string | number | boolean {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -237,7 +239,7 @@ async function captureRecipeSnapshot(): Promise<void> {
     command: recipe.value.command,
     args: normalizedArgs(),
   });
-  message.success(`Captured snapshot for ${recipe.value.title}`);
+  message.success(t('insights.captureSuccess', { value: recipe.value.title }));
 }
 
 async function toggleRecipeFavorite(): Promise<void> {
@@ -245,7 +247,7 @@ async function toggleRecipeFavorite(): Promise<void> {
 
   const nextFavorite = !isFavoriteRecipe.value;
   await store.toggleFavorite('recipe', recipe.value.id, nextFavorite);
-  message.success(nextFavorite ? `Favorited ${recipe.value.title}` : `Removed ${recipe.value.title} from favorites`);
+  message.success(nextFavorite ? t('insights.favoriteSuccess', { value: recipe.value.title }) : t('insights.unfavoriteSuccess', { value: recipe.value.title }));
 }
 
 async function saveInsightPreset(input: { name: string; description: string }): Promise<void> {
@@ -261,7 +263,7 @@ async function saveInsightPreset(input: { name: string; description: string }): 
       advancedMode: store.advancedMode,
     }),
   });
-  message.success(`Saved insight preset "${input.name}"`);
+  message.success(t('insights.savePresetSuccess', { value: input.name }));
 }
 
 async function saveRecipeJob(): Promise<void> {
@@ -278,23 +280,23 @@ async function saveRecipeJob(): Promise<void> {
     intervalMinutes: jobModel.intervalMinutes,
     enabled: jobModel.enabled,
   });
-  message.success(job.enabled ? `Saved snapshot job "${job.name}"` : `Updated disabled snapshot job "${job.name}"`);
+  message.success(job.enabled ? t('insights.saveJobEnabled', { value: job.name }) : t('insights.saveJobDisabled', { value: job.name }));
 }
 
 async function runRecipeJobNow(): Promise<void> {
   if (!currentJob.value) return;
   const jobName = currentJob.value.name;
   await store.runJobNow(currentJob.value.id);
-  message.success(`Ran snapshot job "${jobName}"`);
+  message.success(t('insights.runJobSuccess', { value: jobName }));
 }
 
 async function deleteRecipeJob(): Promise<void> {
   if (!currentJob.value) return;
   const jobName = currentJob.value.name;
-  const proceed = window.confirm(`Delete snapshot job "${jobName}"?`);
+  const proceed = window.confirm(t('insights.deleteJobConfirm', { value: jobName }));
   if (!proceed) return;
   await store.deleteJob(currentJob.value.id);
-  message.success(`Deleted snapshot job "${jobName}"`);
+  message.success(t('insights.deleteJobSuccess', { value: jobName }));
 }
 
 function readinessAlertType(tone: 'success' | 'info' | 'warning' | 'error'): 'success' | 'info' | 'warning' | 'error' {
@@ -328,20 +330,20 @@ function applyInsightPreset(preset: StudioPresetEntry): void {
     applyArgsToRecipeModel(state.args);
     pendingRecipeArgs.value = null;
   }
-  message.success(`Applied preset "${preset.name}"`);
+  message.success(t('insights.applyPresetSuccess', { value: preset.name }));
 }
 
 async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
-  const proceed = window.confirm(`Delete preset "${preset.name}"?`);
+  const proceed = window.confirm(t('insights.deletePresetConfirm', { value: preset.name }));
   if (!proceed) return;
   await store.deletePreset(preset.id);
-  message.success(`Deleted preset "${preset.name}"`);
+  message.success(t('insights.deletePresetSuccess', { value: preset.name }));
 }
 </script>
 
 <template>
   <section class="page-grid">
-    <n-card title="Recipe Catalog" class="glass-card">
+    <n-card :title="t('insights.catalog')" class="glass-card">
       <div class="recipe-grid">
         <button
           v-for="item in store.recipes"
@@ -361,7 +363,7 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
     </n-card>
 
     <div class="split-grid">
-      <n-card title="Recipe Controls" class="glass-card">
+      <n-card :title="t('insights.controls')" class="glass-card">
         <n-alert v-if="store.executionError" type="error" class="page-alert">
           {{ store.executionError }}
         </n-alert>
@@ -375,7 +377,7 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
               <strong>{{ commandReadiness.title }}</strong>
               <div v-for="bullet in commandReadiness.bullets" :key="bullet" class="panel-note">{{ bullet }}</div>
               <div v-if="commandReadiness.needsOps" class="card-actions">
-                <n-button size="small" tertiary @click="openOps()">Open Ops</n-button>
+                <n-button size="small" tertiary @click="openOps()">{{ t('workbench.openOps') }}</n-button>
               </div>
             </div>
           </n-alert>
@@ -388,12 +390,12 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
           <p class="panel-note">{{ recipe.description }}</p>
           <div class="card-actions">
             <n-button quaternary @click="toggleRecipeFavorite()">
-              {{ isFavoriteRecipe ? 'Favorited' : 'Favorite Recipe' }}
+              {{ isFavoriteRecipe ? t('registry.favorited') : t('insights.favoriteRecipe') }}
             </n-button>
             <save-preset-button
-              button-label="Save Preset"
-              title="Save Insight Preset"
-              description="Persist this recipe plus the current override values so you can replay the exact insight configuration."
+              :button-label="t('insights.savePreset')"
+              :title="t('insights.savePresetTitle')"
+              :description="t('insights.savePresetDescription')"
               :default-name="recipe.title"
               :default-description="recipe.description"
               :save="saveInsightPreset"
@@ -419,39 +421,39 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
           </n-form>
 
           <div class="card-actions">
-            <n-button type="primary" :loading="store.runningCommand" @click="runRecipe()">Run Recipe</n-button>
-            <n-button tertiary @click="openInWorkbench()">Open in Workbench</n-button>
-            <n-button tertiary :loading="store.runningSnapshot" @click="captureRecipeSnapshot()">Capture Snapshot</n-button>
-            <n-button tertiary @click="resetRecipeModel()">Reset Defaults</n-button>
+            <n-button type="primary" :loading="store.runningCommand" @click="runRecipe()">{{ t('insights.runRecipe') }}</n-button>
+            <n-button tertiary @click="openInWorkbench()">{{ t('insights.openWorkbench') }}</n-button>
+            <n-button tertiary :loading="store.runningSnapshot" @click="captureRecipeSnapshot()">{{ t('insights.captureSnapshot') }}</n-button>
+            <n-button tertiary @click="resetRecipeModel()">{{ t('insights.resetDefaults') }}</n-button>
           </div>
         </template>
       </n-card>
 
       <div class="page-grid">
-        <n-card title="Snapshot Timeline" class="glass-card">
+        <n-card :title="t('insights.timeline')" class="glass-card">
           <template v-if="recipe">
             <div class="card-actions card-actions--between">
               <div class="panel-note">
-                {{ currentSnapshots.length }} snapshots captured for this recipe. The timeline is derived from the leading numeric series in each result.
+                {{ t('insights.timelineSummary', { count: currentSnapshots.length }) }}
               </div>
-              <n-button size="small" quaternary @click="store.refreshSnapshots('recipe', recipe.id)">Refresh</n-button>
+              <n-button size="small" quaternary @click="store.refreshSnapshots('recipe', recipe.id)">{{ t('common.refresh') }}</n-button>
             </div>
             <result-panel
-              :title="`${recipe.title} timeline`"
+              :title="t('insights.timelineTitle', { value: recipe.title })"
               :result="currentSnapshots.length ? timelineResult : undefined"
             />
           </template>
         </n-card>
 
-        <n-card title="Snapshot Job" class="glass-card">
+        <n-card :title="t('insights.snapshotJob')" class="glass-card">
           <template v-if="recipe">
             <n-form label-placement="top">
-              <n-form-item label="Capture cadence">
+              <n-form-item :label="t('insights.captureCadence')">
                 <n-select v-model:value="jobModel.intervalMinutes" :options="intervalOptions" />
               </n-form-item>
-              <n-form-item label="Enabled">
+              <n-form-item :label="t('insights.enabled')">
                 <div class="switch-inline switch-inline--wide">
-                  <span>{{ currentJob?.nextRunAt ? `Next run ${new Date(currentJob.nextRunAt).toLocaleString()}` : 'Job will start scheduling after save' }}</span>
+                  <span>{{ currentJob?.nextRunAt ? t('insights.nextRun', { value: new Date(currentJob.nextRunAt).toLocaleString() }) : t('insights.jobStartsAfterSave') }}</span>
                   <n-switch v-model:value="jobModel.enabled" />
                 </div>
               </n-form-item>
@@ -461,42 +463,42 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
               <n-tag size="small" :type="currentJob.lastStatus === 'error' ? 'error' : currentJob.lastStatus === 'success' ? 'success' : 'warning'">
                 {{ currentJob.lastStatus }}
               </n-tag>
-              <span class="chip chip--small">last {{ currentJob.lastRunAt ? new Date(currentJob.lastRunAt).toLocaleString() : 'never' }}</span>
+              <span class="chip chip--small">{{ t('insights.lastRun', { value: currentJob.lastRunAt ? new Date(currentJob.lastRunAt).toLocaleString() : t('insights.never') }) }}</span>
             </div>
 
             <div class="card-actions">
-              <n-button type="primary" @click="saveRecipeJob()">Save Job</n-button>
-              <n-button tertiary :disabled="!currentJob" @click="runRecipeJobNow()">Run Now</n-button>
-              <n-button tertiary :disabled="!currentJob" @click="deleteRecipeJob()">Delete Job</n-button>
+              <n-button type="primary" @click="saveRecipeJob()">{{ t('insights.saveJob') }}</n-button>
+              <n-button tertiary :disabled="!currentJob" @click="runRecipeJobNow()">{{ t('common.runNow') }}</n-button>
+              <n-button tertiary :disabled="!currentJob" @click="deleteRecipeJob()">{{ t('insights.deleteJob') }}</n-button>
             </div>
           </template>
         </n-card>
 
-        <n-card title="Compare Snapshots" class="glass-card">
+        <n-card :title="t('insights.compareSnapshots')" class="glass-card">
           <template v-if="currentSnapshots.length">
             <div class="compare-grid">
-              <n-select v-model:value="leftSnapshotId" :options="snapshotOptions" placeholder="Base snapshot" />
-              <n-select v-model:value="rightSnapshotId" :options="snapshotOptions" placeholder="Target snapshot" />
+              <n-select v-model:value="leftSnapshotId" :options="snapshotOptions" :placeholder="t('insights.baseSnapshot')" />
+              <n-select v-model:value="rightSnapshotId" :options="snapshotOptions" :placeholder="t('insights.targetSnapshot')" />
             </div>
             <result-panel
-              :title="recipe ? `${recipe.title} snapshot diff` : 'Snapshot diff'"
+              :title="recipe ? t('insights.snapshotDiff', { value: recipe.title }) : t('insights.compareSnapshots')"
               :result="snapshotComparisonResult"
             />
           </template>
-          <n-empty v-else description="Capture at least one snapshot to compare recipe output over time." />
+          <n-empty v-else :description="t('insights.compareEmpty')" />
         </n-card>
 
-        <n-card title="Saved Presets" class="glass-card">
+        <n-card :title="t('insights.savedPresets')" class="glass-card">
           <preset-shelf
             :presets="store.insightPresets"
-            empty-description="Save recurring recipe configurations here for fast topic monitoring."
+            :empty-description="t('insights.savedPresetsEmpty')"
             @apply="applyInsightPreset"
             @remove="removeInsightPreset"
           />
         </n-card>
 
         <result-panel
-          :title="recipe ? `${recipe.title} output` : 'Recipe output'"
+          :title="recipe ? t('insights.outputTitle', { value: recipe.title }) : t('insights.recipeOutput')"
           :result="currentResult"
         />
       </div>

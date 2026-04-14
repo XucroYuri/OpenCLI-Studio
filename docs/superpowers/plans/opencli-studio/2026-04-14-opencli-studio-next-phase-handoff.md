@@ -105,7 +105,7 @@ Expected baseline:
 - Test: `studio/src/lib/ops.test.ts`
 
 - [ ] Extend `studio/src/lib/readiness.test.ts` with cases for actionable remediation copy, not just status classification.
-- [ ] Run `npm --prefix studio run test -- src/lib/readiness.test.ts` and confirm the new tests fail for the expected missing remediation fields.
+- [ ] Run `npm run studio:test -- src/lib/readiness.test.ts` and confirm the new tests fail for the expected missing remediation fields.
 - [ ] Update `studio/src/lib/readiness.ts` so readiness objects can include remediation actions such as:
   - open `Ops`
   - rerun doctor with live mode
@@ -116,8 +116,8 @@ Expected baseline:
 - [ ] Run:
 
 ```bash
-npm --prefix studio run test -- src/lib/readiness.test.ts src/lib/ops.test.ts
-npm --prefix studio run typecheck
+npm run studio:test -- src/lib/readiness.test.ts src/lib/ops.test.ts
+npm run studio:typecheck
 ```
 
 - [ ] Commit:
@@ -155,8 +155,8 @@ git commit -m "feat: add studio remediation flows"
 
 ```bash
 npx vitest run src/studio/server.test.ts src/studio/metadata.test.ts --project unit
-npm --prefix studio run typecheck
-npm --prefix studio run test -- src/lib/routes.test.ts src/lib/registry.test.ts
+npm run studio:typecheck
+npm run studio:test -- src/lib/routes.test.ts src/lib/registry.test.ts
 ```
 
 - [ ] Commit:
@@ -192,8 +192,8 @@ git commit -m "feat: add studio command documentation panels"
 
 ```bash
 npx vitest run src/studio/server.test.ts --project unit
-npm --prefix studio run test
-npm --prefix studio run build
+npm run studio:test
+npm run studio:build
 ```
 
 - [ ] Commit:
@@ -225,8 +225,8 @@ git commit -m "feat: expand studio recipe coverage"
 - [ ] Run:
 
 ```bash
-npm --prefix studio run test
-npm --prefix studio run typecheck
+npm run studio:test
+npm run studio:typecheck
 ```
 
 - [ ] Commit:

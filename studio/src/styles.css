@@ -1,11 +1,18 @@
 :root {
   color-scheme: dark;
-  font-family: "Avenir Next", "Segoe UI Variable Text", "Trebuchet MS", sans-serif;
+  font-family: "Avenir Next Condensed", "Bahnschrift SemiCondensed", "Segoe UI Variable Text", sans-serif;
   background:
-    radial-gradient(circle at top left, rgba(242, 140, 40, 0.18), transparent 28%),
-    radial-gradient(circle at 85% 10%, rgba(46, 167, 160, 0.16), transparent 24%),
-    linear-gradient(135deg, #06111b 0%, #0c1724 45%, #09131d 100%);
+    radial-gradient(circle at top left, rgba(242, 140, 40, 0.18), transparent 24%),
+    radial-gradient(circle at 82% 10%, rgba(46, 167, 160, 0.16), transparent 22%),
+    linear-gradient(145deg, #071018 0%, #0a1521 42%, #08111a 100%);
   color: #eff3ee;
+  --panel-bg: rgba(10, 18, 28, 0.88);
+  --panel-border: rgba(132, 159, 170, 0.14);
+  --panel-muted: #98aeb6;
+  --panel-strong: #f7f3eb;
+  --panel-accent: #f28c28;
+  --panel-accent-soft: rgba(242, 140, 40, 0.14);
+  --panel-teal: #2ea7a0;
 }
 
 * {
@@ -40,10 +47,10 @@ a {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 272px minmax(0, 1fr);
   min-height: 100vh;
-  padding: 20px;
-  gap: 18px;
+  padding: 14px;
+  gap: 12px;
 }
 
 .app-nav,
@@ -57,14 +64,14 @@ a {
   align-self: start;
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 28px;
-  border: 1px solid rgba(139, 163, 173, 0.16);
-  border-radius: 30px;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
   background:
-    linear-gradient(180deg, rgba(12, 24, 35, 0.92), rgba(7, 17, 28, 0.9)),
+    linear-gradient(180deg, rgba(12, 24, 35, 0.94), rgba(7, 17, 28, 0.92)),
     radial-gradient(circle at top, rgba(242, 140, 40, 0.08), transparent 36%);
-  box-shadow: 0 28px 80px rgba(2, 7, 13, 0.35);
+  box-shadow: 0 20px 56px rgba(2, 7, 13, 0.32);
 }
 
 .brand-block h1,
@@ -95,16 +102,32 @@ a {
 
 .nav-links {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .nav-link {
-  padding: 14px 16px;
-  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
   color: #b6c6cc;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid transparent;
   transition: 180ms ease;
+}
+
+.nav-link__short {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffd9b2;
+  font-size: 11px;
+  letter-spacing: 0.08em;
 }
 
 .nav-link:hover,
@@ -117,16 +140,32 @@ a {
 
 .nav-status {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   margin-top: auto;
+}
+
+.nav-tools {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--panel-border);
+}
+
+.nav-tools__label {
+  color: var(--panel-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .nav-status__row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
   color: #9db0b8;
 }
@@ -138,19 +177,23 @@ a {
 .app-main {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
-  padding: 24px 28px;
-  border-radius: 28px;
-  border: 1px solid rgba(139, 163, 173, 0.16);
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  border: 1px solid var(--panel-border);
   background:
     linear-gradient(180deg, rgba(10, 24, 36, 0.9), rgba(8, 16, 26, 0.86)),
     radial-gradient(circle at right top, rgba(46, 167, 160, 0.08), transparent 26%);
+}
+
+.topbar__copy {
+  max-width: 720px;
 }
 
 .topbar__meta {
@@ -172,26 +215,26 @@ a {
 .page-host {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
 .page-grid {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .hero-card {
-  padding: 8px;
+  padding: 4px;
 }
 
 .hero-card .n-card__content {
   display: grid;
-  gap: 24px;
+  gap: 16px;
 }
 
 .hero-card__copy h3 {
-  font-size: clamp(28px, 4vw, 42px);
-  max-width: 14ch;
+  font-size: clamp(24px, 3.2vw, 34px);
+  max-width: 16ch;
 }
 
 .hero-card__actions,
@@ -211,7 +254,7 @@ a {
 .command-grid,
 .split-grid {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .favorites-block,
@@ -227,10 +270,10 @@ a {
 .metric-tile,
 .kv-item,
 .result-panel__fact {
-  padding: 18px;
-  border-radius: 20px;
+  padding: 14px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(139, 163, 173, 0.12);
+  border: 1px solid var(--panel-border);
 }
 
 .metric-tile span,
@@ -265,7 +308,7 @@ a {
 }
 
 .command-grid {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .chip-cloud {
@@ -278,7 +321,7 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid rgba(242, 140, 40, 0.2);
   background: rgba(242, 140, 40, 0.08);
@@ -301,8 +344,8 @@ a {
   text-align: left;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(139, 163, 173, 0.12);
-  border-radius: 20px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 14px;
   color: inherit;
   transition: 180ms ease;
   cursor: pointer;
@@ -351,7 +394,7 @@ a {
 
 .recipe-card strong,
 .command-card__header h3 {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .recipe-card p {
@@ -398,8 +441,8 @@ a {
 .command-card .n-card__content {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-height: 260px;
+  gap: 12px;
+  min-height: 220px;
 }
 
 .filter-bar {
@@ -429,7 +472,7 @@ a {
 }
 
 .workbench-layout {
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
 }
 
 .workbench-column {
@@ -451,8 +494,8 @@ a {
 }
 
 .preset-item {
-  padding: 16px 18px;
-  border-radius: 20px;
+  padding: 14px 16px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(139, 163, 173, 0.12);
 }
@@ -494,8 +537,8 @@ a {
 
 .inventory-item,
 .issue-item {
-  padding: 18px;
-  border-radius: 20px;
+  padding: 14px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(139, 163, 173, 0.12);
 }
@@ -595,8 +638,8 @@ a {
 
 .json-block {
   margin: 0;
-  padding: 18px;
-  border-radius: 20px;
+  padding: 14px;
+  border-radius: 16px;
   background: rgba(3, 10, 16, 0.72);
   border: 1px solid rgba(139, 163, 173, 0.12);
   color: #c9d9df;
@@ -683,13 +726,13 @@ a {
 
 @media (max-width: 720px) {
   .app-shell {
-    padding: 14px;
+    padding: 10px;
   }
 
   .app-nav,
   .topbar {
-    padding: 20px;
-    border-radius: 24px;
+    padding: 16px;
+    border-radius: 18px;
   }
 
   .metrics-grid,

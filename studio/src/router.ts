@@ -8,8 +8,8 @@ export const router = createRouter({
       name: 'overview',
       component: () => import('./views/OverviewView.vue'),
       meta: {
-        title: 'Overview',
-        description: 'Environment, activity, and the broad Studio surface.',
+        titleKey: 'routes.overview.title',
+        descriptionKey: 'routes.overview.description',
       },
     },
     {
@@ -17,8 +17,8 @@ export const router = createRouter({
       name: 'registry',
       component: () => import('./views/RegistryView.vue'),
       meta: {
-        title: 'Registry',
-        description: 'Facet, search, and classify every available CLI command.',
+        titleKey: 'routes.registry.title',
+        descriptionKey: 'routes.registry.description',
       },
     },
     {
@@ -26,8 +26,8 @@ export const router = createRouter({
       name: 'workbench',
       component: () => import('./views/WorkbenchView.vue'),
       meta: {
-        title: 'Workbench',
-        description: 'Parameterize commands, execute them, and inspect structured output.',
+        titleKey: 'routes.workbench.title',
+        descriptionKey: 'routes.workbench.description',
       },
     },
     {
@@ -35,8 +35,8 @@ export const router = createRouter({
       name: 'insights',
       component: () => import('./views/InsightsView.vue'),
       meta: {
-        title: 'Insights',
-        description: 'Opinionated recipe pages for hot topics, trends, and topic monitoring.',
+        titleKey: 'routes.insights.title',
+        descriptionKey: 'routes.insights.description',
       },
     },
     {
@@ -44,8 +44,8 @@ export const router = createRouter({
       name: 'ops',
       component: () => import('./views/OpsView.vue'),
       meta: {
-        title: 'Ops',
-        description: 'Doctor, plugin inventory, external CLI status, and local bridge operations.',
+        titleKey: 'routes.ops.title',
+        descriptionKey: 'routes.ops.description',
       },
     },
   ],

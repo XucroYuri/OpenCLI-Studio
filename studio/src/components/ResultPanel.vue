@@ -2,16 +2,18 @@
 import { computed, defineAsyncComponent } from 'vue';
 import { NButton, NCard, NDataTable, NEmpty, NTabPane, NTabs, NTag, useMessage } from 'naive-ui';
 import { buildResultExports, type ResultExportArtifact } from '../lib/export';
+import { useStudioI18n } from '../lib/i18n';
 import { buildResultPresentation } from '../lib/results';
 
 const ChartPanel = defineAsyncComponent(() => import('./ChartPanel.vue'));
 const message = useMessage();
+const { t } = useStudioI18n();
 
 const props = withDefaults(defineProps<{
   result?: unknown;
   title?: string;
 }>(), {
-  title: 'Result',
+  title: '',
 });
 
 const presentation = computed(() => buildResultPresentation(props.result));
@@ -34,7 +36,7 @@ const columns = computed(() =>
 async function copyArtifact(artifact: ResultExportArtifact): Promise<void> {
   try {
     await navigator.clipboard.writeText(artifact.contents);
-    message.success(`Copied ${artifact.filename}`);
+    message.success(t('resultPanel.copied', { filename: artifact.filename }));
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error));
   }
@@ -48,32 +50,32 @@ function downloadArtifact(artifact: ResultExportArtifact): void {
   anchor.download = artifact.filename;
   anchor.click();
   URL.revokeObjectURL(url);
-  message.success(`Exported ${artifact.filename}`);
+  message.success(t('resultPanel.exported', { filename: artifact.filename }));
 }
 </script>
 
 <template>
-  <n-card :title="title" class="glass-card">
+  <n-card :title="title || t('common.result')" class="glass-card">
     <template v-if="presentation.summary.kind === 'empty'">
-      <n-empty description="Run a command to inspect structured output." />
+      <n-empty :description="t('resultPanel.empty')" />
     </template>
     <template v-else>
       <div class="result-panel__summary">
         <div class="result-panel__summary-copy">
           <n-tag type="warning" size="small">{{ presentation.summary.kind }}</n-tag>
-          <span>{{ presentation.summary.count }} units observed</span>
+          <span>{{ t('resultPanel.observed', { count: presentation.summary.count }) }}</span>
         </div>
         <div v-if="exportBundle" class="result-panel__exports">
-          <n-button size="small" quaternary @click="copyArtifact(exportBundle.json)">Copy JSON</n-button>
-          <n-button size="small" quaternary @click="downloadArtifact(exportBundle.json)">Download JSON</n-button>
-          <n-button size="small" quaternary @click="downloadArtifact(exportBundle.markdown)">Download Markdown</n-button>
+          <n-button size="small" quaternary @click="copyArtifact(exportBundle.json)">{{ t('resultPanel.copyJson') }}</n-button>
+          <n-button size="small" quaternary @click="downloadArtifact(exportBundle.json)">{{ t('resultPanel.downloadJson') }}</n-button>
+          <n-button size="small" quaternary @click="downloadArtifact(exportBundle.markdown)">{{ t('resultPanel.downloadMarkdown') }}</n-button>
           <n-button
             v-if="exportBundle.csv"
             size="small"
             quaternary
             @click="downloadArtifact(exportBundle.csv)"
           >
-            Download CSV
+            {{ t('resultPanel.downloadCsv') }}
           </n-button>
         </div>
       </div>
@@ -88,7 +90,7 @@ function downloadArtifact(artifact: ResultExportArtifact): void {
       <chart-panel v-if="presentation.chart" :model="presentation.chart" />
 
       <n-tabs type="line" animated class="result-panel__tabs">
-        <n-tab-pane v-if="presentation.rows.length" name="table" tab="Table">
+        <n-tab-pane v-if="presentation.rows.length" name="table" :tab="t('common.table')">
           <n-data-table
             size="small"
             :columns="columns"
@@ -97,7 +99,7 @@ function downloadArtifact(artifact: ResultExportArtifact): void {
             scroll-x="900"
           />
         </n-tab-pane>
-        <n-tab-pane name="json" tab="JSON">
+        <n-tab-pane name="json" :tab="t('common.json')">
           <pre class="json-block">{{ JSON.stringify(result, null, 2) }}</pre>
         </n-tab-pane>
       </n-tabs>
