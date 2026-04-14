@@ -18,7 +18,7 @@ const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const { t } = useStudioI18n();
+const { locale, t } = useStudioI18n();
 
 const formModel = reactive<Record<string, any>>({});
 const pendingFormArgs = ref<Record<string, unknown> | null>(store.consumeWorkbenchArgs());
@@ -32,7 +32,7 @@ if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
 
 const commandOptions = computed(() =>
   store.availableWorkbenchCommands.map((command) => ({
-    label: `${command.description || command.name}  (${command.command})`,
+    label: `${store.getCommandDisplayDesc(command.command, command.description || command.name, locale.value)}  (${command.command})`,
     value: command.command,
   })),
 );
@@ -394,7 +394,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
               {{ riskLabel(command.meta.risk) }}
             </n-tag>
           </div>
-          <p>{{ command.description || t('common.noDescription') }}</p>
+          <p>{{ store.getCommandDisplayDesc(command.command, command.description || '', locale) || t('common.noDescription') }}</p>
           <pre class="json-block cli-block">{{ cliPreview }}</pre>
           <div class="card-actions">
             <n-button quaternary @click="toggleCommandFavorite()">

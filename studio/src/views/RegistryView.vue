@@ -657,7 +657,7 @@ watch(currentFilters, (nextFilters) => {
             :title="cmd.command"
             @click="openWorkbench(cmd.command)"
           >
-            {{ cmd.description || cmd.name }}
+            {{ store.getCommandDisplayDesc(cmd.command, cmd.description || cmd.name, locale) }}
           </button>
           <button
             v-if="group.count > 5"
@@ -689,7 +689,7 @@ watch(currentFilters, (nextFilters) => {
             @click="openWorkbench(cmd.command)"
           >
             <div>
-              <strong style="color:#fff;">{{ cmd.description || cmd.name }}</strong>
+              <strong style="color:#fff;">{{ store.getCommandDisplayDesc(cmd.command, cmd.description || cmd.name, locale) }}</strong>
             </div>
             <div class="card-actions">
               <n-tag v-if="store.advancedMode" size="small" :type="riskTone(cmd.meta.risk)">{{ riskLabel(cmd.meta.risk) }}</n-tag>

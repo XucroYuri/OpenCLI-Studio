@@ -18,7 +18,7 @@ const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const { t } = useStudioI18n();
+const { locale, t } = useStudioI18n();
 
 const recipeModel = reactive<Record<string, any>>({});
 const jobModel = reactive({
@@ -383,7 +383,7 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
           :class="{ 'recipe-card--active': item.id === selectedRecipeId }"
           @click="selectedRecipeId = item.id"
         >
-          <div class="eyebrow">{{ store.registry.commands.find(c => c.command === item.command)?.description || item.command }}</div>
+          <div class="eyebrow">{{ store.getCommandDisplayDesc(item.command, store.registry.commands.find(c => c.command === item.command)?.description || item.command, locale) }}</div>
           <strong>{{ item.title }}</strong>
           <div class="chip-cloud">
             <span v-for="tag in item.tags" :key="tag" class="chip chip--small">{{ tag }}</span>
@@ -420,7 +420,7 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
             </div>
           </n-alert>
           <div class="chip-cloud">
-            <n-tag size="small" type="warning">{{ recipeCommand?.description || recipe.command }}</n-tag>
+            <n-tag size="small" type="warning">{{ store.getCommandDisplayDesc(recipe.command, recipeCommand?.description || recipe.command, locale) }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="default">{{ surfaceLabel(recipeCommand.meta.surface) }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="info">{{ modeLabel(recipeCommand.meta.mode) }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="success">{{ capabilityLabel(recipeCommand.meta.capability) }}</n-tag>

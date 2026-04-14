@@ -209,7 +209,7 @@ function capabilityLabel(value: string): string {
         <div v-if="recentRuns.length" class="stack-list">
           <button v-for="entry in recentRuns" :key="entry.id" class="stack-row" @click="openWorkbench(entry.command)">
             <div>
-              <strong>{{ store.registry.commands.find(c => c.command === entry.command)?.description || entry.command }}</strong>
+              <strong>{{ store.getCommandDisplayDesc(entry.command, store.registry.commands.find(c => c.command === entry.command)?.description || entry.command, locale) }}</strong>
               <span>{{ formatTime(entry.startedAt) }}</span>
             </div>
             <div class="stack-row__meta">
@@ -312,7 +312,7 @@ function capabilityLabel(value: string): string {
                 @click="openWorkbench(command.command)"
               >
                 <div>
-                  <strong>{{ command.description || command.name }}</strong>
+                  <strong>{{ store.getCommandDisplayDesc(command.command, command.description || command.name, locale) }}</strong>
                   <span>{{ store.getSiteDisplayName(command.site, locale) }}</span>
                 </div>
                 <n-tag size="small" type="info">{{ capabilityLabel(command.meta.capability) }}</n-tag>
