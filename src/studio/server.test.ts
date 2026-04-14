@@ -182,4 +182,29 @@ describe('startStudioServer', () => {
     const assetText = await assetResponse.text();
     expect(assetText).toContain('studio-app');
   });
+
+  it('returns a fallback HTML shell when frontend assets have not been built yet', async () => {
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'google',
+          name: 'trends',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      execute: vi.fn(),
+      doctor: vi.fn(async () => ({ ok: true, summary: 'healthy' })),
+    });
+
+    const response = await fetch(`${server.url}/`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(html).toContain('OpenCLI Studio frontend assets are not built yet');
+    expect(html).toContain('npm run studio:build');
+  });
 });

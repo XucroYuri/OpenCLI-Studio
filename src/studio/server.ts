@@ -41,6 +41,66 @@ function notFound(res: ServerResponse): void {
   json(res, 404, { ok: false, error: 'Not found' });
 }
 
+function renderFallbackShell(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenCLI Studio</title>
+    <style>
+      :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top left, rgba(242,140,40,0.18), transparent 28%),
+          radial-gradient(circle at 80% 10%, rgba(46,167,160,0.14), transparent 22%),
+          linear-gradient(135deg, #07131f 0%, #0c1724 45%, #08111a 100%);
+        color: #eff3ee;
+      }
+      main {
+        width: min(760px, calc(100vw - 32px));
+        padding: 32px;
+        border-radius: 28px;
+        background: rgba(9, 21, 32, 0.9);
+        border: 1px solid rgba(255,255,255,0.08);
+        box-shadow: 0 24px 80px rgba(0,0,0,0.28);
+      }
+      .eyebrow {
+        color: #f4b47a;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 12px;
+      }
+      h1 { margin: 12px 0 8px; font-size: clamp(28px, 5vw, 42px); }
+      p, li { color: #b9c8cf; line-height: 1.6; }
+      code {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(242,140,40,0.12);
+        color: #f7d4b2;
+      }
+      ul { padding-left: 20px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">OpenCLI Studio</div>
+      <h1>OpenCLI Studio frontend assets are not built yet.</h1>
+      <p>The local API server is running, but the web UI bundle was not found under <code>dist/studio</code>.</p>
+      <ul>
+        <li>Build the frontend with <code>npm run studio:build</code></li>
+        <li>Then restart the server with <code>opencli studio</code> or <code>opencli studio serve</code></li>
+        <li>API endpoints remain available under <code>/api/*</code></li>
+      </ul>
+    </main>
+  </body>
+</html>`;
+}
+
 async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -214,6 +274,12 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       if (method === 'GET' && staticDir) {
         const served = await serveStaticAsset(res, staticDir, pathname);
         if (served) return;
+      }
+
+      if (method === 'GET' && !staticDir && (pathname === '/' || !path.extname(pathname))) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderFallbackShell());
+        return;
       }
 
       notFound(res);
