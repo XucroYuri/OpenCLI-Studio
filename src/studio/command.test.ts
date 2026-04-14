@@ -57,4 +57,26 @@ describe('runStudioCommand', () => {
       staticDir: '/repo/dist/studio',
     }));
   });
+
+  it('does not auto-open a browser when frontend assets are missing', async () => {
+    const startServer = vi.fn(async () => ({
+      url: 'http://127.0.0.1:4313',
+      close: vi.fn(async () => undefined),
+    }));
+    const openBrowser = vi.fn(async () => undefined);
+    const onReady = vi.fn();
+
+    await runStudioCommand(
+      { mode: 'open', port: 4313, openBrowser: true },
+      {
+        startServer,
+        openBrowser,
+        onReady,
+        resolveStaticDir: () => undefined,
+      },
+    );
+
+    expect(onReady).toHaveBeenCalledWith('http://127.0.0.1:4313');
+    expect(openBrowser).not.toHaveBeenCalled();
+  });
 });

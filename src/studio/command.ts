@@ -43,7 +43,9 @@ export async function runStudioCommand(
   const onReady = dependencies.onReady ?? ((url: string) => {
     console.log(`OpenCLI Studio is running at ${url}`);
   });
-  const staticDir = dependencies.resolveStaticDir?.() ?? resolveStudioStaticDir();
+  const staticDir = dependencies.resolveStaticDir
+    ? dependencies.resolveStaticDir()
+    : resolveStudioStaticDir();
 
   const server = await startServer({
     port: options.port,
@@ -53,7 +55,11 @@ export async function runStudioCommand(
 
   onReady(server.url);
 
-  if (options.openBrowser) {
+  if (!staticDir) {
+    console.log('OpenCLI Studio frontend assets were not found. Run `npm run studio:build` before using the browser UI.');
+  }
+
+  if (options.openBrowser && staticDir) {
     await openBrowser(server.url);
   }
 
