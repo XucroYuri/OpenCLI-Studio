@@ -12,7 +12,12 @@ describe('runStudioCommand', () => {
 
     await runStudioCommand(
       { mode: 'open', port: 4310, openBrowser: true },
-      { startServer, openBrowser, onReady },
+      {
+        startServer,
+        openBrowser,
+        onReady,
+        resolveStaticDir: () => '/repo/dist/studio',
+      },
     );
 
     expect(startServer).toHaveBeenCalledWith(expect.objectContaining({ port: 4310 }));
