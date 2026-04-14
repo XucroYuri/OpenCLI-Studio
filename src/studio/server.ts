@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { executeCommand } from '../execution.js';
-import { isBinaryInstalled, loadExternalClis } from '../external.js';
+import { getInstallCmd, isBinaryInstalled, loadExternalClis } from '../external.js';
 import { listPlugins, type PluginInfo } from '../plugin.js';
 import { getRegistry, type CliCommand } from '../registry.js';
 import { PKG_VERSION } from '../version.js';
@@ -246,7 +246,14 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
   const plugins = rawPlugins
     ? buildStudioPluginInventory(rawPlugins, registry)
     : ((options.plugins as StudioPluginEntry[] | undefined) ?? []);
-  const externalClis = options.externalClis ?? buildStudioExternalInventory(loadExternalClis(), isBinaryInstalled);
+  const externalClis = (options.externalClis ?? buildStudioExternalInventory(
+    loadExternalClis(),
+    isBinaryInstalled,
+    (entry) => getInstallCmd(entry.install),
+  )).map((entry) => ({
+    ...entry,
+    installCommand: entry.installCommand ?? null,
+  }));
   const commandMap = createCommandMap(commands);
   const recipes = listStudioRecipes(commands);
   const recipeMap = new Map(recipes.map((recipe) => [recipe.id, recipe]));

@@ -35,6 +35,7 @@ export function buildStudioPluginInventory(
 export function buildStudioExternalInventory(
   externalClis: ExternalCliConfig[],
   isInstalled: (binary: string) => boolean,
+  getInstallCommand: (cli: ExternalCliConfig) => string | null,
 ): StudioExternalCliEntry[] {
   return externalClis
     .map((entry) => ({
@@ -45,6 +46,7 @@ export function buildStudioExternalInventory(
       tags: entry.tags ?? [],
       installed: isInstalled(entry.binary),
       installAvailable: !!entry.install,
+      installCommand: getInstallCommand(entry),
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }

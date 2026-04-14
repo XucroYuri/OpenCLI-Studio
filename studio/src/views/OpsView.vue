@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { NButton, NCard, NEmpty, NSwitch, NTag, useMessage } from 'naive-ui';
 import { buildDoctorStatusRows, buildOpsMetrics, type OpsTone } from '../lib/ops';
 import { useStudioStore } from '../stores/studio';
 import type { StudioExternalCliEntry, StudioPluginEntry } from '../types';
 
 const store = useStudioStore();
+const router = useRouter();
 const message = useMessage();
 
 const liveMode = ref(true);
@@ -61,6 +63,41 @@ function formatIdleTime(ms: number): string {
   const minutes = Math.round(ms / 60000);
   if (minutes <= 1) return 'about 1 minute';
   return `about ${minutes} minutes`;
+}
+
+function pluginCommands(plugin: StudioPluginEntry) {
+  return store.registry.commands.filter((command) => command.site === plugin.name);
+}
+
+function openOpsRegistry(site?: string, surface?: 'plugin' | 'external' | 'builtin'): void {
+  void router.push({
+    name: 'registry',
+    query: {
+      ...(site ? { site } : {}),
+      ...(surface ? { surface } : {}),
+      ...(store.advancedMode ? { advanced: '1' } : {}),
+    },
+  });
+}
+
+function openWorkbench(command: string): void {
+  store.setSelectedCommand(command);
+  void router.push({
+    name: 'workbench',
+    query: {
+      command,
+      ...(store.advancedMode ? { advanced: '1' } : {}),
+    },
+  });
+}
+
+async function copyInstallCommand(command: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(command);
+    message.success('Install command copied');
+  } catch (error) {
+    message.error(getErrorMessage(error));
+  }
 }
 
 async function refreshInventory(): Promise<void> {
@@ -195,6 +232,18 @@ async function runDoctor(): Promise<void> {
 
       <div v-if="store.plugins.length" class="inventory-list">
         <article v-for="plugin in store.plugins" :key="plugin.name" class="inventory-item">
+          <div class="card-actions">
+            <n-button size="small" tertiary @click="openOpsRegistry(plugin.name, 'plugin')">Open Registry Slice</n-button>
+            <n-button
+              size="small"
+              tertiary
+              :disabled="pluginCommands(plugin)[0] == null"
+              @click="pluginCommands(plugin)[0] && openWorkbench(pluginCommands(plugin)[0].command)"
+            >
+              Open First Command
+            </n-button>
+          </div>
+
           <div class="inventory-item__header">
             <div>
               <strong>{{ plugin.name }}</strong>
@@ -274,12 +323,38 @@ async function runDoctor(): Promise<void> {
 
           <div class="inventory-notes">
             <div class="inventory-note inventory-note--wide">
+              <span>Install guidance</span>
+              <strong>{{ entry.installCommand || (entry.installAvailable ? 'Install command not resolved for this platform.' : 'No automatic install command is registered.') }}</strong>
+            </div>
+            <div class="inventory-note inventory-note--wide">
               <span>Homepage</span>
               <strong v-if="entry.homepage">
                 <a class="inventory-link" :href="entry.homepage" target="_blank" rel="noreferrer">{{ entry.homepage }}</a>
               </strong>
               <strong v-else>Not provided</strong>
             </div>
+          </div>
+
+          <div class="card-actions">
+            <n-button
+              size="small"
+              tertiary
+              :disabled="!entry.installCommand"
+              @click="entry.installCommand && copyInstallCommand(entry.installCommand)"
+            >
+              Copy Install Command
+            </n-button>
+            <n-button
+              v-if="entry.homepage"
+              size="small"
+              tertiary
+              tag="a"
+              :href="entry.homepage"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Homepage
+            </n-button>
           </div>
         </article>
       </div>

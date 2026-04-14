@@ -369,6 +369,7 @@ describe('startStudioServer', () => {
           description: 'GitHub CLI',
           installed: true,
           installAvailable: true,
+          installCommand: null,
           tags: ['git', 'github'],
           homepage: 'https://cli.github.com',
         },
@@ -391,12 +392,13 @@ describe('startStudioServer', () => {
 
     const externalResponse = await fetch(`${server.url}/api/external`);
     const external = await externalResponse.json() as {
-      entries: Array<{ name: string; installed: boolean }>;
+      entries: Array<{ name: string; installed: boolean; installCommand: string | null }>;
     };
     expect(external.entries).toMatchObject([
       {
         name: 'gh',
         installed: true,
+        installCommand: null,
       },
     ]);
 

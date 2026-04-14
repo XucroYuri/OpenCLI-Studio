@@ -50,6 +50,7 @@ const EXTERNAL_CLIS: StudioExternalCliEntry[] = [
     tags: ['git', 'github'],
     installed: true,
     installAvailable: true,
+    installCommand: 'brew install gh',
   },
   {
     name: 'yt-dlp',
@@ -59,6 +60,7 @@ const EXTERNAL_CLIS: StudioExternalCliEntry[] = [
     tags: ['media'],
     installed: false,
     installAvailable: true,
+    installCommand: 'brew install yt-dlp',
   },
 ];
 

@@ -149,6 +149,7 @@ export interface StudioExternalCliEntry {
   tags: string[];
   installed: boolean;
   installAvailable: boolean;
+  installCommand: string | null;
 }
 
 export interface StudioDoctorResult {

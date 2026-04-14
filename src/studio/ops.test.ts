@@ -55,7 +55,7 @@ describe('buildStudioPluginInventory', () => {
 });
 
 describe('buildStudioExternalInventory', () => {
-  it('marks external CLIs as installed or missing', () => {
+  it('marks external CLIs as installed or missing and exposes install guidance', () => {
     const external = buildStudioExternalInventory([
       {
         name: 'gh',
@@ -69,18 +69,20 @@ describe('buildStudioExternalInventory', () => {
         binary: 'yt-dlp',
         description: 'Downloader',
       },
-    ], (binary) => binary === 'gh');
+    ], (binary) => binary === 'gh', (entry) => entry.install?.default ?? null);
 
     expect(external).toEqual([
       expect.objectContaining({
         name: 'gh',
         installed: true,
         installAvailable: true,
+        installCommand: 'brew install gh',
       }),
       expect.objectContaining({
         name: 'yt-dlp',
         installed: false,
         installAvailable: false,
+        installCommand: null,
       }),
     ]);
   });
