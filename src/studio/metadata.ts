@@ -1,5 +1,6 @@
 import { isElectronApp } from '../electron-apps.js';
 import { fullName, Strategy, type CliCommand } from '../registry.js';
+import { inferMarket, inferSiteCategory } from './site-taxonomy.js';
 import type {
   StudioCapability,
   StudioCommandMeta,
@@ -82,12 +83,16 @@ export function buildStudioCommandMeta(cmd: CliCommand, options: StudioMetadataO
   const mode = inferMode(cmd);
   const risk = inferRisk(capability, cmd.name);
   const surface = options.pluginSites?.has(cmd.site) ? 'plugin' : 'builtin';
+  const market = inferMarket(cmd.site, cmd);
+  const siteCategory = inferSiteCategory(cmd.site, cmd);
 
   return {
     surface,
     mode,
     capability,
     risk,
+    market,
+    siteCategory,
     uiHints: {
       supportsLists: capability === 'discovery' || capability === 'search' || capability === 'account' || capability === 'detail',
       supportsDetails: capability === 'detail' || capability === 'account',
@@ -116,14 +121,43 @@ export function buildStudioRegistry(commands: CliCommand[], options: StudioMetad
     .map((command) => toStudioRegistryCommand(command, options))
     .sort((a, b) => a.command.localeCompare(b.command));
 
-  const sitesMap = new Map<string, number>();
+  const sitesByName = new Map<string, StudioRegistryCommand[]>();
   for (const command of normalized) {
-    sitesMap.set(command.site, (sitesMap.get(command.site) ?? 0) + 1);
+    const existing = sitesByName.get(command.site);
+    if (existing) {
+      existing.push(command);
+    } else {
+      sitesByName.set(command.site, [command]);
+    }
   }
 
-  const sites: StudioRegistrySite[] = [...sitesMap.entries()]
+  const sites: StudioRegistrySite[] = [...sitesByName.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([site, commandCount]) => ({ site, commandCount }));
+    .map(([site, siteCommands]) => {
+      const firstCommand = siteCommands[0];
+      if (!firstCommand) {
+        return { site, commandCount: 0 } satisfies StudioRegistrySite;
+      }
+
+      const commandCountByTag: Record<string, number> = {
+        all: siteCommands.length,
+      };
+
+      for (const command of siteCommands) {
+        const marketTag = `market:${command.meta.market}`;
+        const categoryTag = `siteCategory:${command.meta.siteCategory}`;
+        commandCountByTag[marketTag] = (commandCountByTag[marketTag] ?? 0) + 1;
+        commandCountByTag[categoryTag] = (commandCountByTag[categoryTag] ?? 0) + 1;
+      }
+
+      return {
+        site,
+        commandCount: siteCommands.length,
+        market: firstCommand.meta.market,
+        category: firstCommand.meta.siteCategory,
+        commandCountByTag,
+      };
+    });
 
   return { commands: normalized, sites };
 }

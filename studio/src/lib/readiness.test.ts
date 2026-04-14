@@ -3,6 +3,17 @@ import { buildCommandReadiness } from './readiness';
 import type { StudioCommandItem, StudioDoctorResult, StudioPluginEntry } from '../types';
 
 function makeCommand(overrides: Partial<StudioCommandItem>): StudioCommandItem {
+  const baseMeta = {
+    market: 'international',
+    siteCategory: 'news',
+    uiHints: {
+      supportsLists: true,
+      supportsDetails: false,
+      supportsCharts: true,
+      supportsTimeSeries: true,
+    },
+  } as const;
+
   return {
     command: 'google/trends',
     site: 'google',
@@ -16,6 +27,7 @@ function makeCommand(overrides: Partial<StudioCommandItem>): StudioCommandItem {
       mode: 'public',
       capability: 'discovery',
       risk: 'safe',
+      ...baseMeta,
       uiHints: {
         supportsLists: true,
         supportsDetails: false,
@@ -46,20 +58,22 @@ describe('buildCommandReadiness', () => {
       command: makeCommand({
         command: 'bilibili/hot',
         site: 'bilibili',
-        browser: true,
-        strategy: 'cookie',
-        meta: {
-          surface: 'builtin',
-          mode: 'browser',
-          capability: 'discovery',
-          risk: 'safe',
-          uiHints: {
-            supportsLists: true,
-            supportsDetails: false,
-            supportsCharts: true,
-            supportsTimeSeries: true,
-          },
+      browser: true,
+      strategy: 'cookie',
+      meta: {
+        surface: 'builtin',
+        mode: 'browser',
+        capability: 'discovery',
+        risk: 'safe',
+        market: 'domestic',
+        siteCategory: 'media',
+        uiHints: {
+          supportsLists: true,
+          supportsDetails: false,
+          supportsCharts: true,
+          supportsTimeSeries: true,
         },
+      },
       }),
       doctor: null,
       plugins: [],
@@ -103,12 +117,14 @@ describe('buildCommandReadiness', () => {
         command: 'hot-digest/hot',
         site: 'hot-digest',
         browser: true,
-        strategy: 'cookie',
+      strategy: 'cookie',
         meta: {
           surface: 'plugin',
           mode: 'browser',
           capability: 'discovery',
           risk: 'safe',
+          market: 'domestic',
+          siteCategory: 'commerce',
           uiHints: {
             supportsLists: true,
             supportsDetails: false,
@@ -139,12 +155,14 @@ describe('buildCommandReadiness', () => {
         command: 'notion/search',
         site: 'notion',
         browser: false,
-        strategy: 'ui',
+      strategy: 'ui',
         meta: {
           surface: 'builtin',
           mode: 'desktop',
           capability: 'search',
           risk: 'safe',
+          market: 'international',
+          siteCategory: 'utility',
           uiHints: {
             supportsLists: true,
             supportsDetails: false,

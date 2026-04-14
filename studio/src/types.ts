@@ -17,6 +17,8 @@ export interface StudioCommandMeta {
   mode: StudioMode;
   capability: StudioCapability;
   risk: StudioRisk;
+  market: 'domestic' | 'international' | 'unknown';
+  siteCategory: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
   uiHints: {
     supportsLists: boolean;
     supportsDetails: boolean;
@@ -38,7 +40,13 @@ export interface StudioCommandItem {
 
 export interface StudioRegistryPayload {
   commands: StudioCommandItem[];
-  sites: Array<{ site: string; commandCount: number }>;
+  sites: Array<{
+    site: string;
+    commandCount: number;
+    market?: 'domestic' | 'international' | 'unknown';
+    category?: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
+    commandCountByTag?: Record<string, number>;
+  }>;
 }
 
 export interface StudioHistoryEntry {

@@ -76,6 +76,45 @@ describe('buildStudioCommandMeta', () => {
 
     expect(meta.surface).toBe('plugin');
   });
+
+  it('marks domestic and international market by site white lists', () => {
+    const domesticMeta = buildStudioCommandMeta(makeCommand({
+      site: 'bilibili',
+      name: 'hot',
+      strategy: Strategy.COOKIE,
+      browser: true,
+    }));
+    const internationalMeta = buildStudioCommandMeta(makeCommand({
+      site: 'google',
+      name: 'trends',
+      strategy: Strategy.PUBLIC,
+      browser: false,
+    }));
+
+    expect(domesticMeta.market).toBe('domestic');
+    expect(internationalMeta.market).toBe('international');
+  });
+
+  it('uses siteCategory fallback and keeps unknown/other for unrecognized patterns', () => {
+    const categoryMeta = buildStudioCommandMeta(makeCommand({
+      site: 'custom-repo',
+      name: 'watch',
+      domain: 'example.org',
+      strategy: Strategy.PUBLIC,
+      browser: false,
+    }));
+    const unknownMeta = buildStudioCommandMeta(makeCommand({
+      site: 'custom-repo',
+      name: 'unknown-activity',
+      strategy: Strategy.PUBLIC,
+      browser: false,
+    }));
+
+    expect(categoryMeta.market).toBe('unknown');
+    expect(categoryMeta.siteCategory).toBe('video');
+    expect(unknownMeta.market).toBe('unknown');
+    expect(unknownMeta.siteCategory).toBe('other');
+  });
 });
 
 describe('buildStudioRegistry', () => {
@@ -87,13 +126,33 @@ describe('buildStudioRegistry', () => {
 
     const registry = buildStudioRegistry(commands);
 
-    expect(registry.commands.map((item) => item.command)).toEqual([
+  expect(registry.commands.map((item) => item.command)).toEqual([
       'bilibili/hot',
       'reddit/search',
     ]);
-    expect(registry.sites).toEqual([
-      { site: 'bilibili', commandCount: 1 },
-      { site: 'reddit', commandCount: 1 },
-    ]);
+      expect(registry.sites).toEqual(expect.arrayContaining([
+        {
+          site: 'bilibili',
+          commandCount: 1,
+          market: 'domestic',
+          category: 'video',
+          commandCountByTag: expect.objectContaining({
+            all: 1,
+            'market:domestic': 1,
+            'siteCategory:video': 1,
+          }),
+        },
+      {
+        site: 'reddit',
+        commandCount: 1,
+        market: 'international',
+        category: 'social',
+        commandCountByTag: expect.objectContaining({
+          all: 1,
+          'market:international': 1,
+          'siteCategory:social': 1,
+        }),
+      },
+    ]));
   });
 });

@@ -25,6 +25,8 @@ export interface StudioCommandMeta {
   mode: StudioMode;
   capability: StudioCapability;
   risk: StudioRisk;
+  market: 'domestic' | 'international' | 'unknown';
+  siteCategory: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
   uiHints: StudioUiHints;
 }
 
@@ -42,6 +44,9 @@ export interface StudioRegistryCommand {
 export interface StudioRegistrySite {
   site: string;
   commandCount: number;
+  market?: 'domestic' | 'international' | 'unknown';
+  category?: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
+  commandCountByTag?: Record<string, number>;
 }
 
 export interface StudioRegistryPayload {

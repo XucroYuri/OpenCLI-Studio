@@ -18,6 +18,8 @@ export function buildRegistryPresetState(filters: RegistryFilters): Record<strin
   return {
     search: filters.search,
     site: filters.site,
+    market: filters.market,
+    siteCategory: filters.siteCategory,
     surface: filters.surface,
     mode: filters.mode,
     capability: filters.capability,
@@ -32,6 +34,8 @@ export function readRegistryPresetState(state: Record<string, unknown>): Registr
   return {
     search: readString(state.search, ''),
     site: readString(state.site, 'all'),
+    market: readString(state.market, 'all') as RegistryFilters['market'],
+    siteCategory: readString(state.siteCategory, 'all') as RegistryFilters['siteCategory'],
     surface: readString(state.surface, 'all') as RegistryFilters['surface'],
     mode: readString(state.mode, 'all') as RegistryFilters['mode'],
     capability: readString(state.capability, 'all') as RegistryFilters['capability'],

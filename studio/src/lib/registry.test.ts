@@ -16,6 +16,8 @@ const COMMANDS: StudioCommandItem[] = [
       mode: 'browser',
       capability: 'discovery',
       risk: 'safe',
+      market: 'domestic',
+      siteCategory: 'commerce',
       uiHints: {
         supportsLists: true,
         supportsDetails: false,
@@ -37,6 +39,8 @@ const COMMANDS: StudioCommandItem[] = [
       mode: 'public',
       capability: 'discovery',
       risk: 'safe',
+      market: 'international',
+      siteCategory: 'news',
       uiHints: {
         supportsLists: true,
         supportsDetails: false,
@@ -58,6 +62,8 @@ const COMMANDS: StudioCommandItem[] = [
       mode: 'browser',
       capability: 'action',
       risk: 'confirm',
+      market: 'domestic',
+      siteCategory: 'commerce',
       uiHints: {
         supportsLists: false,
         supportsDetails: false,
@@ -73,6 +79,8 @@ describe('filterRegistryCommands', () => {
     const filtered = filterRegistryCommands(COMMANDS, {
       search: 'trend',
       site: 'google',
+      market: 'all',
+      siteCategory: 'all',
       surface: 'builtin',
       mode: 'public',
       capability: 'all',
@@ -89,6 +97,8 @@ describe('filterRegistryCommands', () => {
     const safeOnly = filterRegistryCommands(COMMANDS, {
       search: '',
       site: 'all',
+      market: 'all',
+      siteCategory: 'all',
       surface: 'all',
       mode: 'all',
       capability: 'all',
@@ -101,6 +111,8 @@ describe('filterRegistryCommands', () => {
     const advanced = filterRegistryCommands(COMMANDS, {
       search: '',
       site: 'all',
+      market: 'all',
+      siteCategory: 'all',
       surface: 'all',
       mode: 'all',
       capability: 'all',
@@ -118,6 +130,8 @@ describe('filterRegistryCommands', () => {
     const filtered = filterRegistryCommands(COMMANDS, {
       search: '',
       site: 'all',
+      market: 'all',
+      siteCategory: 'all',
       surface: 'plugin',
       mode: 'all',
       capability: 'all',
@@ -128,6 +142,39 @@ describe('filterRegistryCommands', () => {
     });
 
     expect(filtered.map((item) => item.command)).toEqual(['douyin/publish']);
+  });
+
+  it('filters commands by market and site category', () => {
+    const marketFiltered = filterRegistryCommands(COMMANDS, {
+      search: '',
+      site: 'all',
+      market: 'domestic',
+      siteCategory: 'all',
+      surface: 'all',
+      mode: 'all',
+      capability: 'all',
+      purpose: 'all',
+      risk: 'all',
+      supportsChartsOnly: false,
+      advancedMode: true,
+    });
+
+    const categoryFiltered = filterRegistryCommands(COMMANDS, {
+      search: '',
+      site: 'all',
+      market: 'all',
+      siteCategory: 'news',
+      surface: 'all',
+      mode: 'all',
+      capability: 'all',
+      purpose: 'all',
+      risk: 'all',
+      supportsChartsOnly: false,
+      advancedMode: true,
+    });
+
+    expect(marketFiltered.map((item) => item.command)).toEqual(['bilibili/hot', 'douyin/publish']);
+    expect(categoryFiltered.map((item) => item.command)).toEqual(['google/trends']);
   });
 });
 

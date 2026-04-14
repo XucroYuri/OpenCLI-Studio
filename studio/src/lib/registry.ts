@@ -12,6 +12,8 @@ export type RegistryPurpose =
 export interface RegistryFilters {
   search: string;
   site: string;
+  market: 'domestic' | 'international' | 'unknown' | 'all';
+  siteCategory: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other' | 'all';
   surface: StudioSurface | 'all';
   mode: StudioMode | 'all';
   capability: StudioCapability | 'all';
@@ -53,12 +55,68 @@ export function filterRegistryCommands(
     if (filters.surface !== 'all' && command.meta.surface !== filters.surface) return false;
     if (filters.mode !== 'all' && command.meta.mode !== filters.mode) return false;
     if (filters.capability !== 'all' && command.meta.capability !== filters.capability) return false;
+    if (filters.market !== 'all' && command.meta.market !== filters.market) return false;
+    if (filters.siteCategory !== 'all' && command.meta.siteCategory !== filters.siteCategory) return false;
     if (filters.risk !== 'all' && command.meta.risk !== filters.risk) return false;
     if (filters.purpose !== 'all' && inferCommandPurpose(command) !== filters.purpose) return false;
     if (filters.supportsChartsOnly && !command.meta.uiHints.supportsCharts) return false;
 
     return true;
   });
+}
+
+export type RegistryCatalogAxis =
+  | 'market'
+  | 'siteCategory'
+  | 'site'
+  | 'surface'
+  | 'capability'
+  | 'purpose'
+  | 'risk';
+
+export interface RegistryCatalogEntry {
+  axis: RegistryCatalogAxis;
+  value: string;
+  count: number;
+}
+
+export function buildRegistryCatalog(commands: StudioCommandItem[]): Record<RegistryCatalogAxis, RegistryCatalogEntry[]> {
+  const marketValues = new Map<string, number>();
+  const siteValues = new Map<string, number>();
+  const surfaceValues = new Map<string, number>();
+  const categoryValues = new Map<string, number>();
+  const modeValues = new Map<string, number>();
+  const capabilityValues = new Map<string, number>();
+  const purposeValues = new Map<string, number>();
+  const riskValues = new Map<string, number>();
+
+  for (const command of commands) {
+    const market = command.meta.market ?? 'unknown';
+    const siteCategory = command.meta.siteCategory ?? 'other';
+    const purpose = inferCommandPurpose(command);
+
+    marketValues.set(market, (marketValues.get(market) ?? 0) + 1);
+    siteValues.set(command.site, (siteValues.get(command.site) ?? 0) + 1);
+    categoryValues.set(siteCategory, (categoryValues.get(siteCategory) ?? 0) + 1);
+    surfaceValues.set(command.meta.surface, (surfaceValues.get(command.meta.surface) ?? 0) + 1);
+    modeValues.set(command.meta.mode, (modeValues.get(command.meta.mode) ?? 0) + 1);
+    capabilityValues.set(command.meta.capability, (capabilityValues.get(command.meta.capability) ?? 0) + 1);
+    purposeValues.set(purpose, (purposeValues.get(purpose) ?? 0) + 1);
+    riskValues.set(command.meta.risk, (riskValues.get(command.meta.risk) ?? 0) + 1);
+  }
+
+  const fromMap = (axis: RegistryCatalogAxis, values: Map<string, number>): RegistryCatalogEntry[] =>
+    [...values.entries()].map(([value, count]) => ({ axis, value, count }));
+
+  return {
+    market: fromMap('market', marketValues),
+    site: fromMap('site', siteValues),
+    siteCategory: fromMap('siteCategory', categoryValues),
+    surface: fromMap('surface', surfaceValues),
+    capability: fromMap('capability', capabilityValues),
+    purpose: fromMap('purpose', purposeValues),
+    risk: fromMap('risk', riskValues),
+  };
 }
 
 export function inferCommandPurpose(command: StudioCommandItem): RegistryPurpose {
