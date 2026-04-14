@@ -32,9 +32,14 @@ const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const { t } = useStudioI18n();
+const { locale, t } = useStudioI18n();
 
 const catalogOpen = ref(false);
+const expandedSiteName = ref<string | null>(null);
+const expandedSiteOpen = computed({
+  get: () => expandedSiteName.value !== null,
+  set: (v: boolean) => { if (!v) expandedSiteName.value = null; },
+});
 const initialFilters = parseRegistryQuery(route.query);
 if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
   store.setAdvancedMode(initialFilters.advancedMode);
@@ -65,7 +70,7 @@ const currentFilters = computed<RegistryFilters>(() => ({
   advancedMode: store.advancedMode,
 }));
 
-const filteredCommands = computed(() => filterRegistryCommands(store.registry.commands, currentFilters.value));
+const filteredCommands = computed(() => filterRegistryCommands(store.registry.commands, currentFilters.value, store.getSiteCategory));
 const favoriteCount = computed(() => store.favoriteCommandIds.size);
 
 const marketOptions = computed(() => [
@@ -79,19 +84,16 @@ const siteCategoryOptions = computed(() => [
   { value: 'all', label: t('registry.siteCategory.all') },
   { value: 'social', label: t('registry.siteCategory.social') },
   { value: 'news', label: t('registry.siteCategory.news') },
-  { value: 'commerce', label: t('registry.siteCategory.commerce') },
   { value: 'finance', label: t('registry.siteCategory.finance') },
-  { value: 'media', label: t('registry.siteCategory.media') },
-  { value: 'knowledge', label: t('registry.siteCategory.knowledge') },
-  { value: 'video', label: t('registry.siteCategory.video') },
-  { value: 'ai-tool', label: t('registry.siteCategory.aiTool') },
-  { value: 'utility', label: t('registry.siteCategory.utility') },
+  { value: 'ecommerce', label: t('registry.siteCategory.ecommerce') },
+  { value: 'academic', label: t('registry.siteCategory.academic') },
+  { value: 'tools', label: t('registry.siteCategory.tools') },
   { value: 'other', label: t('registry.siteCategory.other') },
 ]);
 
 const siteOptions = computed(() => [
   { label: t('registry.allSites'), value: 'all' },
-  ...store.registry.sites.map((item) => ({ label: `${item.site} (${item.commandCount})`, value: item.site })),
+  ...store.registry.sites.map((item) => ({ label: `${store.getSiteDisplayName(item.site, locale.value)} (${item.commandCount})`, value: item.site })),
 ]);
 
 const modeOptions = computed(() => [
@@ -161,7 +163,7 @@ type CommandSection = {
 const siteCatalog = computed(() => [
   { label: t('registry.allSites'), value: 'all', type: 'site' as const, count: store.registry.commands.length },
   ...store.registry.sites.map((entry) => ({
-    label: entry.site,
+    label: store.getSiteDisplayName(entry.site, locale.value),
     value: entry.site,
     type: 'site' as const,
     count: entry.commandCount,
@@ -188,7 +190,7 @@ const siteCategoryCatalog = computed<RegistryCatalogEntry[]>(() => [
       label: item.label,
       value: item.value as RegistryFilters['siteCategory'],
       type: 'siteCategory' as const,
-      count: store.registry.commands.filter((command) => command.meta.siteCategory === item.value).length,
+      count: store.registry.commands.filter((command) => store.getSiteCategory(command.site) === item.value).length,
     })),
 ]);
 
@@ -254,6 +256,43 @@ const activeGroupingAxis = computed<RegistryCatalogAxis>(() => {
   return 'market';
 });
 
+const filteredSiteGroups = computed(() => {
+  return store.siteGroups
+    .map(group => {
+      const filtered = group.commands.filter(cmd => {
+        if (search.value) {
+          const q = search.value.toLowerCase();
+          if (!cmd.command.toLowerCase().includes(q) && !(cmd.description ?? '').toLowerCase().includes(q) && !cmd.site.toLowerCase().includes(q)) return false;
+        }
+        if (site.value && site.value !== 'all' && cmd.site !== site.value) return false;
+        if (siteCategory.value && siteCategory.value !== 'all' && store.getSiteCategory(cmd.site) !== siteCategory.value) return false;
+        if (purpose.value && purpose.value !== 'all' && inferCommandPurpose(cmd) !== purpose.value) return false;
+        if (market.value && market.value !== 'all' && cmd.meta?.market !== market.value) return false;
+        if (surface.value && surface.value !== 'all' && cmd.meta?.surface !== surface.value) return false;
+        if (mode.value && mode.value !== 'all' && cmd.meta?.mode !== mode.value) return false;
+        if (capability.value && capability.value !== 'all' && cmd.meta?.capability !== capability.value) return false;
+        if (risk.value && risk.value !== 'all' && cmd.meta?.risk !== risk.value) return false;
+        if (supportsChartsOnly.value && !cmd.meta?.uiHints?.supportsCharts) return false;
+        return true;
+      });
+      return { ...group, commands: filtered, count: filtered.length };
+    })
+    .filter(group => group.count > 0)
+    .sort((a, b) => {
+      if (a.domestic !== b.domestic) return a.domestic ? -1 : 1;
+      return b.count - a.count;
+    });
+});
+
+const expandedSite = computed(() => {
+  if (!expandedSiteName.value) return null;
+  return store.siteGroups.find(g => g.site === expandedSiteName.value) ?? null;
+});
+
+function expandSite(siteName: string): void {
+  expandedSiteName.value = siteName;
+}
+
 const commandSections = computed<CommandSection[]>(() => {
   const axis = activeGroupingAxis.value;
   const groups = new Map<string, StudioCommandItem[]>();
@@ -264,7 +303,7 @@ const commandSections = computed<CommandSection[]>(() => {
       : axis === 'market'
         ? command.meta.market
         : axis === 'siteCategory'
-          ? command.meta.siteCategory
+          ? store.getSiteCategory(command.site)
           : axis === 'capability'
             ? command.meta.capability
             : axis === 'purpose'
@@ -302,8 +341,7 @@ function marketLabel(value: RegistryFilters['market']): string {
 }
 
 function siteCategoryLabel(value: RegistryFilters['siteCategory']): string {
-  const key = value === 'ai-tool' ? 'aiTool' : value;
-  return t(`registry.siteCategory.${key}`);
+  return t(`registry.siteCategory.${value}`);
 }
 
 function modeLabel(value: RegistryFilters['mode']): string {
@@ -466,65 +504,53 @@ watch(currentFilters, (nextFilters) => {
 
 <template>
   <section class="page-grid">
-    <n-card class="glass-card">
+    <div class="page-inline-header">
+      <h1 class="gradient-title">{{ t('routes.registry.title') }}</h1>
+      <p class="page-inline-header__desc">{{ t('routes.registry.description') }}</p>
+    </div>
+
+    <n-card class="glass-card registry-header-card">
       <div class="filter-bar">
-        <n-input v-model:value="search" :placeholder="t('registry.searchPlaceholder')" clearable />
+        <n-input v-model:value="search" :placeholder="t('registry.searchPlaceholder')" clearable size="large" />
         <n-select v-model:value="site" :options="siteOptions" />
-        <n-select v-model:value="market" :options="marketOptions" />
-        <n-select v-model:value="surface" :options="surfaceOptions" />
-        <n-select v-model:value="mode" :options="modeOptions" />
         <n-select v-model:value="purpose" :options="purposeOptions" />
-        <n-select v-model:value="capability" :options="capabilityOptions" />
-        <n-select v-model:value="risk" :options="riskOptions" />
-        <n-select v-model:value="siteCategory" :options="siteCategoryOptions" />
-        <label class="switch-inline filter-bar__switch">
-          <span>{{ t('registry.chartsOnly') }}</span>
-          <n-switch v-model:value="supportsChartsOnly" />
-        </label>
         <div class="filter-bar__buttons">
           <n-button size="small" tertiary @click="catalogOpen = true">{{ t('registry.openCatalog') }}</n-button>
-          <n-button size="small" secondary @click="clearCategoryFilters()">{{ t('registry.clearCategoryFilters') }}</n-button>
           <n-button size="small" type="primary" @click="clearAllFilters()">{{ t('registry.resetCatalog') }}</n-button>
         </div>
       </div>
 
-      <n-drawer v-model:show="catalogOpen" :width="360" :show-mask="false">
-        <n-drawer-content :title="t('registry.catalog.title')">
-          <div class="panel-note">{{ t('registry.catalog.subtitle') }}</div>
-          <div class="catalog-list">
-            <section v-for="section in catalogSections" :key="section.axis" class="catalog-section">
-              <div class="catalog-title">{{ section.title }}</div>
-              <div v-if="!hasCatalogEntries(section)" class="panel-note catalog-empty">{{ t('registry.catalog.empty') }}</div>
-              <div v-else class="catalog-grid">
-                <button
-                  v-for="entry in section.entries"
-                  :key="`${section.axis}-${entry.value}`"
-                  :class="['catalog-chip', { 'catalog-chip--active': isCatalogSelected(entry as RegistryCatalogEntry) }]"
-                  :disabled="entry.count === 0 && section.axis !== 'site' && section.axis !== 'market' && section.axis !== 'siteCategory'"
-                  @click="applyCatalog(entry as RegistryCatalogEntry)"
-                >
-                  <span>{{ entry.label }}</span>
-                  <small>{{ entry.count }}</small>
-                </button>
-              </div>
-            </section>
-          </div>
-          <div class="card-actions card-actions--between">
-            <n-button size="small" tertiary @click="clearCategoryFilters()">{{ t('registry.clearCategoryFilters') }}</n-button>
-            <n-button size="small" quaternary @click="clearAllFilters()">{{ t('registry.resetCatalog') }}</n-button>
-            <n-button size="small" type="primary" @click="catalogOpen = false">{{ t('common.close') }}</n-button>
-          </div>
-        </n-drawer-content>
-      </n-drawer>
+      <div class="category-tabs">
+        <button
+          class="category-tab"
+          :class="{ 'category-tab--active': siteCategory === 'all' }"
+          @click="siteCategory = 'all'"
+        >
+          {{ t('registry.allCategories') }}
+          <span class="category-tab__count">{{ store.registry.commands.length }}</span>
+        </button>
+        <button
+          v-for="group in store.categoryGroups"
+          :key="group.category"
+          class="category-tab"
+          :class="{ 'category-tab--active': siteCategory === group.category }"
+          @click="siteCategory = group.category as any"
+        >
+          {{ store.getCategoryIcon(group.category) }}
+          {{ store.getCategoryLabel(group.category, locale) }}
+          <span class="category-tab__count">{{ group.commands.length }}</span>
+        </button>
+      </div>
 
       <div class="panel-toolbar">
         <div class="panel-note">
-          {{ t('registry.summary', { count: filteredCommands.length, sites: commandSections.length }) }}
-          <template v-if="hasCatalogFilter"> · {{ t('registry.activeCategory') }} </template>
-          <template v-if="!store.advancedMode"> {{ t('registry.hiddenRisk') }} </template>
+          {{ t('registry.summary', { count: filteredCommands.length, sites: filteredSiteGroups.length }) }}
+          <template v-if="siteCategory && siteCategory !== 'all'">
+            · {{ store.getCategoryLabel(siteCategory, locale) }}
+          </template>
         </div>
         <n-button-group class="card-actions">
-          <n-tag size="small" type="info">{{ t('registry.favorites', { count: favoriteCount }) }}</n-tag>
+          <n-tag size="small" type="info" :bordered="false">{{ t('registry.favorites', { count: favoriteCount }) }}</n-tag>
           <save-preset-button
             :button-label="t('registry.saveView')"
             :title="t('registry.saveViewTitle')"
@@ -546,53 +572,102 @@ watch(currentFilters, (nextFilters) => {
       />
     </n-card>
 
-    <div v-if="commandSections.length" class="command-site-grid">
-      <section
-        v-for="group in commandSections"
-        :key="`${group.axis}-${group.key}`"
-        class="command-site-group"
+    <n-drawer v-model:show="catalogOpen" :width="380" :show-mask="false">
+      <n-drawer-content :title="t('registry.catalog.title')">
+        <div class="panel-note">{{ t('registry.catalog.subtitle') }}</div>
+        <div class="catalog-list">
+          <section v-for="section in catalogSections" :key="section.axis" class="catalog-section">
+            <div class="catalog-title">{{ section.title }}</div>
+            <div v-if="!hasCatalogEntries(section)" class="panel-note catalog-empty">{{ t('registry.catalog.empty') }}</div>
+            <div v-else class="catalog-grid">
+              <button
+                v-for="entry in section.entries"
+                :key="`${section.axis}-${entry.value}`"
+                :class="['catalog-chip', { 'catalog-chip--active': isCatalogSelected(entry as RegistryCatalogEntry) }]"
+                :disabled="entry.count === 0 && section.axis !== 'site' && section.axis !== 'market' && section.axis !== 'siteCategory'"
+                @click="applyCatalog(entry as RegistryCatalogEntry)"
+              >
+                <span>{{ entry.label }}</span>
+                <small>{{ entry.count }}</small>
+              </button>
+            </div>
+          </section>
+        </div>
+        <div class="card-actions card-actions--between">
+          <n-button size="small" tertiary @click="clearCategoryFilters()">{{ t('registry.clearCategoryFilters') }}</n-button>
+          <n-button size="small" type="primary" @click="catalogOpen = false">{{ t('common.close') }}</n-button>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
+
+    <div v-if="filteredSiteGroups.length" class="site-card-grid">
+      <div
+        v-for="group in filteredSiteGroups"
+        :key="group.site"
+        class="site-card"
       >
-        <div class="command-site-group__head">
-          <strong>{{ commandGroupLabel(group) }}</strong>
-          <n-tag size="small" type="info">{{ t('registry.commandCount', { count: group.commands.length }) }}</n-tag>
+        <div class="site-card__header">
+          <div class="site-card__icon">{{ store.getCategoryIcon(group.category) }}</div>
+          <div class="site-card__info">
+            <div class="site-card__name">
+              {{ store.getSiteDisplayName(group.site, locale) }}
+              <span v-if="!group.domestic" class="site-card__intl-tag">{{ locale === 'zh-CN' ? '国际' : 'Intl' }}</span>
+            </div>
+            <div class="site-card__category">{{ store.getCategoryLabel(group.category, locale) }}</div>
+          </div>
+          <div class="site-card__count">{{ t('registry.cmdCount', { count: group.count }) }}</div>
         </div>
-        <div class="command-grid">
-          <n-card v-for="command in group.commands" :key="command.command" class="glass-card command-card">
-            <div class="command-card__header">
-              <div>
-                <div class="eyebrow">{{ command.site }}</div>
-                <h3>{{ command.command }}</h3>
-              </div>
-              <div class="command-card__header-meta">
-                <n-button size="small" quaternary @click="toggleCommandFavorite(command)">
-                  {{ store.favoriteCommandIds.has(command.command) ? t('registry.favorited') : t('registry.favorite') }}
-                </n-button>
-                <n-tag size="small" :type="riskTone(command.meta.risk)">{{ riskLabel(command.meta.risk) }}</n-tag>
-              </div>
-            </div>
-            <p>{{ command.description || t('common.noDescription') }}</p>
-            <div class="chip-cloud">
-              <span class="chip chip--small">{{ marketLabel(command.meta.market) }}</span>
-              <span class="chip chip--small">{{ siteCategoryLabel(command.meta.siteCategory) }}</span>
-              <span class="chip chip--small">{{ modeLabel(command.meta.mode) }}</span>
-              <span class="chip chip--small">{{ surfaceLabel(command.meta.surface) }}</span>
-              <span class="chip chip--small">{{ capabilityLabel(command.meta.capability) }}</span>
-              <span class="chip chip--small">{{ command.strategy }}</span>
-              <span v-if="command.meta.uiHints.supportsCharts" class="chip chip--small">{{ t('registry.chartable') }}</span>
-              <span v-if="command.meta.uiHints.supportsTimeSeries" class="chip chip--small">{{ t('registry.timeSeries') }}</span>
-            </div>
-            <div class="command-card__footer">
-              <span>{{ t('registry.args', { count: command.args.length }) }}</span>
-              <div class="card-actions">
-                <n-button size="small" type="primary" @click="openWorkbench(command.command)">
-                  {{ t('registry.openWorkbench') }}
-                </n-button>
-              </div>
-            </div>
-          </n-card>
+        <div class="site-card__commands">
+          <button
+            v-for="cmd in group.commands.slice(0, 5)"
+            :key="cmd.command"
+            class="site-card__cmd site-card__cmd--desc"
+            :title="cmd.command"
+            @click="openWorkbench(cmd.command)"
+          >
+            {{ cmd.description || cmd.name }}
+          </button>
+          <button
+            v-if="group.count > 5"
+            class="site-card__cmd site-card__cmd--more"
+            @click="expandSite(group.site)"
+          >
+            {{ t('registry.more', { count: group.count - 5 }) }}
+          </button>
         </div>
-      </section>
+      </div>
     </div>
     <n-empty v-else :description="t('registry.noMatches')" />
+
+    <!-- 站点展开 Drawer -->
+    <n-drawer v-model:show="expandedSiteOpen" :width="480" :show-mask="false">
+      <n-drawer-content v-if="expandedSite" :title="store.getSiteDisplayName(expandedSite.site, locale)">
+        <div class="panel-note" style="margin-bottom:12px;">
+          {{ store.getCategoryIcon(expandedSite.category) }}
+          {{ store.getCategoryLabel(expandedSite.category, locale) }}
+          · {{ t('registry.cmdCount', { count: expandedSite.count }) }}
+          <span v-if="!expandedSite.domestic" class="site-card__intl-tag" style="margin-left:8px;">{{ locale === 'zh-CN' ? '国际' : 'Intl' }}</span>
+        </div>
+        <div class="stack-list">
+          <div
+            v-for="cmd in expandedSite.commands"
+            :key="cmd.command"
+            class="stack-row"
+            style="cursor:pointer;"
+            @click="openWorkbench(cmd.command)"
+          >
+            <div>
+              <strong style="color:#fff;">{{ cmd.description || cmd.name }}</strong>
+            </div>
+            <div class="card-actions">
+              <n-tag v-if="store.advancedMode" size="small" :type="riskTone(cmd.meta.risk)">{{ riskLabel(cmd.meta.risk) }}</n-tag>
+              <n-button size="small" type="primary" @click.stop="openWorkbench(cmd.command)">
+                {{ t('registry.openWorkbench') }}
+              </n-button>
+            </div>
+          </div>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
   </section>
 </template>

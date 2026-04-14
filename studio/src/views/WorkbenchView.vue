@@ -32,7 +32,7 @@ if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
 
 const commandOptions = computed(() =>
   store.availableWorkbenchCommands.map((command) => ({
-    label: command.command,
+    label: `${command.description || command.name}  (${command.command})`,
     value: command.command,
   })),
 );
@@ -169,8 +169,8 @@ watch(recentRuns, (runs) => {
     leftRunId.value = runs[0]?.id ?? null;
   }
 
-  if (!runs.some((entry) => entry.id === rightRunId.value)) {
-    rightRunId.value = runs[1]?.id ?? runs[0]?.id ?? null;
+  if (!runs.some((entry) => entry.id === rightRunId.value) || rightRunId.value === leftRunId.value) {
+    rightRunId.value = runs.find((entry) => entry.id !== leftRunId.value)?.id ?? null;
   }
 }, { immediate: true });
 
@@ -363,6 +363,11 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
 
 <template>
   <section class="page-grid workbench-layout">
+    <div class="page-inline-header" style="grid-column: 1 / -1;">
+      <h1 class="gradient-title">{{ t('routes.workbench.title') }}</h1>
+      <p class="page-inline-header__desc">{{ t('routes.workbench.description') }}</p>
+    </div>
+
     <div class="workbench-column">
       <n-card :title="t('workbench.selection')" class="glass-card">
         <n-select v-model:value="selectedCommandName" :options="commandOptions" filterable />
@@ -412,7 +417,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
           <div v-for="entry in recentRuns" :key="entry.id" class="stack-row">
             <button class="stack-row__primary" @click="selectCommand(entry.command)">
               <strong>{{ entry.command }}</strong>
-              <span>{{ entry.startedAt }}</span>
+              <span>{{ new Date(entry.startedAt).toLocaleString() }}</span>
             </button>
             <div class="stack-row__meta">
               <n-button size="small" quaternary @click.stop="reuseHistoryEntry(entry)">{{ t('workbench.reuseArgs') }}</n-button>
@@ -447,6 +452,9 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
           </div>
         </div>
         <div v-else class="panel-note">{{ t('workbench.noSnapshots') }}</div>
+        <div v-if="commandSnapshots.length" class="card-actions" style="margin-top: 6px;">
+          <n-button size="small" quaternary @click="router.push({ name: 'insights' })">{{ t('workbench.viewInInsights') }}</n-button>
+        </div>
       </n-card>
     </div>
 
@@ -457,6 +465,9 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
         </n-alert>
 
         <n-form v-if="command" label-placement="top">
+          <template v-if="command.args.some(a => a.required) && command.args.some(a => !a.required)">
+            <div class="eyebrow" style="margin-bottom: 4px;">{{ t('workbench.requiredArgs') }}</div>
+          </template>
           <n-form-item
             v-for="arg in command.args"
             :key="arg.name"

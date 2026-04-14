@@ -216,8 +216,10 @@ watch(() => store.advancedMode, (advancedMode) => {
   }
 });
 
-function fieldKind(value: unknown): 'number' | 'text' {
-  return typeof value === 'number' ? 'number' : 'text';
+function fieldKind(key: string, value: unknown): 'boolean' | 'number' | 'text' {
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'number') return 'number';
+  return 'text';
 }
 
 function normalizedArgs(): Record<string, unknown> {
@@ -275,7 +277,7 @@ async function saveRecipeJob(): Promise<void> {
     sourceKind: 'recipe',
     sourceId: recipe.value.id,
     command: recipe.value.command,
-    name: `${recipe.value.title} Snapshot Job`,
+    name: t('insights.jobNameTemplate', { title: recipe.value.title }),
     description: recipe.value.description,
     args: normalizedArgs(),
     intervalMinutes: jobModel.intervalMinutes,
@@ -366,8 +368,13 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
 
 <template>
   <section class="page-grid">
+    <div class="page-inline-header">
+      <h1 class="gradient-title">{{ t('routes.insights.title') }}</h1>
+      <p class="page-inline-header__desc">{{ t('routes.insights.description') }}</p>
+    </div>
+
     <n-card :title="t('insights.catalog')" class="glass-card">
-      <div class="recipe-grid">
+      <div v-if="store.recipes.length" class="recipe-grid">
         <button
           v-for="item in store.recipes"
           :key="item.id"
@@ -375,13 +382,20 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
           :class="{ 'recipe-card--active': item.id === selectedRecipeId }"
           @click="selectedRecipeId = item.id"
         >
-          <div class="eyebrow">{{ item.command }}</div>
+          <div class="eyebrow">{{ store.registry.commands.find(c => c.command === item.command)?.description || item.command }}</div>
           <strong>{{ item.title }}</strong>
-          <p>{{ item.description }}</p>
           <div class="chip-cloud">
             <span v-for="tag in item.tags" :key="tag" class="chip chip--small">{{ tag }}</span>
           </div>
         </button>
+      </div>
+      <div v-else>
+        <n-empty :description="t('insights.noRecipes')">
+          <template #extra>
+            <p class="panel-note">{{ t('insights.exploreRegistry') }}</p>
+            <n-button size="small" type="primary" @click="$router.push({ name: 'registry' })">{{ t('routes.registry.title') }}</n-button>
+          </template>
+        </n-empty>
       </div>
     </n-card>
 
@@ -405,7 +419,7 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
             </div>
           </n-alert>
           <div class="chip-cloud">
-            <n-tag size="small" type="warning">{{ recipe.command }}</n-tag>
+            <n-tag size="small" type="warning">{{ recipeCommand?.description || recipe.command }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="default">{{ surfaceLabel(recipeCommand.meta.surface) }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="info">{{ modeLabel(recipeCommand.meta.mode) }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="success">{{ capabilityLabel(recipeCommand.meta.capability) }}</n-tag>
@@ -431,8 +445,12 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
               :key="key"
               :label="key"
             >
+              <div v-if="fieldKind(key, value) === 'boolean'" class="switch-inline switch-inline--wide">
+                <span>{{ key }}</span>
+                <n-switch v-model:value="recipeModel[key]" />
+              </div>
               <n-input-number
-                v-if="fieldKind(value) === 'number'"
+                v-else-if="fieldKind(key, value) === 'number'"
                 v-model:value="recipeModel[key]"
                 class="field-fill"
               />

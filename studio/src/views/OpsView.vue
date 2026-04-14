@@ -141,10 +141,15 @@ async function runDoctor(): Promise<void> {
 
 <template>
   <section class="page-grid">
+    <div class="page-inline-header">
+      <h1 class="gradient-title">{{ t('routes.ops.title') }}</h1>
+      <p class="page-inline-header__desc">{{ t('routes.ops.description') }}</p>
+    </div>
+
     <n-card class="hero-card glass-card">
       <div class="hero-card__copy">
         <div class="eyebrow">{{ t('ops.eyebrow') }}</div>
-        <h3>{{ t('ops.title') }}</h3>
+        <h3 class="gradient-title">{{ t('ops.title') }}</h3>
         <p>{{ t('ops.description') }}</p>
       </div>
       <div class="card-actions">
@@ -195,15 +200,13 @@ async function runDoctor(): Promise<void> {
           </div>
         </div>
 
-        <div v-if="store.doctor?.issues?.length" class="issue-list">
-          <div v-for="issue in store.doctor.issues" :key="issue" class="issue-item">
-            <strong>{{ t('ops.issue') }}</strong>
-            <span>{{ issue }}</span>
-          </div>
-        </div>
+        <ol v-if="store.doctor?.issues?.length" class="issue-list">
+          <li v-for="(issue, idx) in store.doctor.issues" :key="idx" class="issue-item">
+            {{ issue }}
+          </li>
+        </ol>
 
-        <pre v-if="store.doctor" class="json-block">{{ JSON.stringify(store.doctor, null, 2) }}</pre>
-        <n-empty v-else :description="t('ops.doctorEmpty')" />
+        <n-empty v-if="!store.doctor" :description="t('ops.doctorEmpty')" />
       </n-card>
 
       <n-card :title="t('ops.activeSessions')" class="glass-card">
@@ -244,12 +247,12 @@ async function runDoctor(): Promise<void> {
           <div class="card-actions">
             <n-button size="small" tertiary @click="openOpsRegistry(plugin.name, 'plugin')">{{ t('ops.openRegistrySlice') }}</n-button>
             <n-button
+              v-if="pluginCommands(plugin).length"
               size="small"
               tertiary
-              :disabled="pluginCommands(plugin)[0] == null"
-              @click="pluginCommands(plugin)[0] && openWorkbench(pluginCommands(plugin)[0].command)"
+              @click="openWorkbench(pluginCommands(plugin)[0].command)"
             >
-              {{ t('ops.openFirstCommand') }}
+              {{ pluginCommands(plugin)[0].command }}
             </n-button>
           </div>
 
