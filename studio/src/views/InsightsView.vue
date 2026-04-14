@@ -7,6 +7,7 @@ import ResultPanel from '../components/ResultPanel.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
 import { buildResultComparison } from '../lib/compare';
 import { buildInsightPresetState, readInsightPresetState } from '../lib/preset-state';
+import { buildCommandReadiness } from '../lib/readiness';
 import { buildInsightQuery, buildWorkbenchQuery, parseInsightQuery } from '../lib/routes';
 import { buildSnapshotTimelineRows } from '../lib/timeline';
 import { useStudioStore } from '../stores/studio';
@@ -77,6 +78,13 @@ const currentJob = computed(() => {
   if (!recipeItem) return null;
   return store.jobs.find((job) => job.sourceKind === 'recipe' && job.sourceId === recipeItem.id) ?? null;
 });
+const commandReadiness = computed(() =>
+  buildCommandReadiness({
+    command: recipeCommand.value,
+    doctor: store.doctor,
+    plugins: store.plugins,
+  }),
+);
 
 const snapshotOptions = computed(() =>
   currentSnapshots.value.map((snapshot) => ({
@@ -289,6 +297,10 @@ async function deleteRecipeJob(): Promise<void> {
   message.success(`Deleted snapshot job "${jobName}"`);
 }
 
+function readinessAlertType(tone: 'success' | 'info' | 'warning' | 'error'): 'success' | 'info' | 'warning' | 'error' {
+  return tone;
+}
+
 function openInWorkbench(): void {
   if (!recipe.value) return;
   store.setSelectedCommand(recipe.value.command);
@@ -300,6 +312,10 @@ function openInWorkbench(): void {
       advancedMode: store.advancedMode,
     }),
   });
+}
+
+function openOps(): void {
+  void router.push({ name: 'ops' });
 }
 
 function applyInsightPreset(preset: StudioPresetEntry): void {
@@ -350,8 +366,22 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
           {{ store.executionError }}
         </n-alert>
         <template v-if="recipe">
+          <n-alert
+            v-if="commandReadiness"
+            :type="readinessAlertType(commandReadiness.tone)"
+            class="page-alert"
+          >
+            <div class="readiness-block">
+              <strong>{{ commandReadiness.title }}</strong>
+              <div v-for="bullet in commandReadiness.bullets" :key="bullet" class="panel-note">{{ bullet }}</div>
+              <div v-if="commandReadiness.needsOps" class="card-actions">
+                <n-button size="small" tertiary @click="openOps()">Open Ops</n-button>
+              </div>
+            </div>
+          </n-alert>
           <div class="chip-cloud">
             <n-tag size="small" type="warning">{{ recipe.command }}</n-tag>
+            <n-tag v-if="recipeCommand" size="small" type="default">{{ recipeCommand.meta.surface }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="info">{{ recipeCommand.meta.mode }}</n-tag>
             <n-tag v-if="recipeCommand" size="small" type="success">{{ recipeCommand.meta.capability }}</n-tag>
           </div>

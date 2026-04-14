@@ -7,6 +7,7 @@ import ResultPanel from '../components/ResultPanel.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
 import { buildResultComparison } from '../lib/compare';
 import { buildWorkbenchPresetState, readWorkbenchPresetState } from '../lib/preset-state';
+import { buildCommandReadiness } from '../lib/readiness';
 import { pickDefaultWorkbenchCommand } from '../lib/registry';
 import { buildWorkbenchQuery, parseWorkbenchQuery } from '../lib/routes';
 import { useStudioStore } from '../stores/studio';
@@ -79,6 +80,13 @@ const runComparisonResult = computed(() => {
 });
 const commandSnapshots = computed(() =>
   command.value ? store.snapshotsBySource[`command:${command.value.command}`] ?? [] : [],
+);
+const commandReadiness = computed(() =>
+  buildCommandReadiness({
+    command: command.value,
+    doctor: store.doctor,
+    plugins: store.plugins,
+  }),
 );
 
 function inferFieldKind(arg: StudioCommandArg): 'select' | 'number' | 'boolean' | 'text' {
@@ -287,6 +295,14 @@ function selectCommand(commandName: string): void {
   selectedCommandName.value = commandName;
 }
 
+function readinessAlertType(tone: 'success' | 'info' | 'warning' | 'error'): 'success' | 'info' | 'warning' | 'error' {
+  return tone;
+}
+
+function openOps(): void {
+  void router.push({ name: 'ops' });
+}
+
 function reuseHistoryEntry(entry: StudioHistoryEntry): void {
   queueArgs(entry.args);
   if (selectedCommandName.value !== entry.command) {
@@ -324,8 +340,22 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
       <n-card title="Command Selection" class="glass-card">
         <n-select v-model:value="selectedCommandName" :options="commandOptions" filterable />
         <div v-if="!store.advancedMode" class="panel-note">Advanced mode is off, so confirm/dangerous commands are hidden from the picker.</div>
+        <n-alert
+          v-if="commandReadiness"
+          :type="readinessAlertType(commandReadiness.tone)"
+          class="page-alert"
+        >
+          <div class="readiness-block">
+            <strong>{{ commandReadiness.title }}</strong>
+            <div v-for="bullet in commandReadiness.bullets" :key="bullet" class="panel-note">{{ bullet }}</div>
+            <div v-if="commandReadiness.needsOps" class="card-actions">
+              <n-button size="small" tertiary @click="openOps()">Open Ops</n-button>
+            </div>
+          </div>
+        </n-alert>
         <div v-if="command" class="command-inspector">
           <div class="chip-cloud">
+            <n-tag size="small" type="default">{{ command.meta.surface }}</n-tag>
             <n-tag size="small" type="info">{{ command.meta.mode }}</n-tag>
             <n-tag size="small" type="success">{{ command.meta.capability }}</n-tag>
             <n-tag size="small" :type="command.meta.risk === 'safe' ? 'success' : command.meta.risk === 'confirm' ? 'warning' : 'error'">
