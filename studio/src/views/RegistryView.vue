@@ -134,6 +134,19 @@ const purposeOptions = computed(() => [
   { label: t('registry.purpose.utility'), value: 'utility' },
 ]);
 
+const purposeGroups = computed(() => {
+  const counts = new Map<string, number>();
+  for (const cmd of store.registry.commands) {
+    const p = inferCommandPurpose(cmd);
+    counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  return purposeOptions.value
+    .filter(o => o.value !== 'all')
+    .map(o => ({ value: o.value, label: o.label, count: counts.get(o.value) ?? 0 }))
+    .filter(g => g.count > 0)
+    .sort((a, b) => b.count - a.count);
+});
+
 const riskOptions = computed(() => [
   { label: t('registry.allRisks'), value: 'all' },
   { label: t('registry.safe'), value: 'safe' },
@@ -513,7 +526,6 @@ watch(currentFilters, (nextFilters) => {
       <div class="filter-bar">
         <n-input v-model:value="search" :placeholder="t('registry.searchPlaceholder')" clearable size="large" />
         <n-select v-model:value="site" :options="siteOptions" />
-        <n-select v-model:value="purpose" :options="purposeOptions" />
         <div class="filter-bar__buttons">
           <n-button size="small" tertiary @click="catalogOpen = true">{{ t('registry.openCatalog') }}</n-button>
           <n-button size="small" type="primary" @click="clearAllFilters()">{{ t('registry.resetCatalog') }}</n-button>
@@ -539,6 +551,26 @@ watch(currentFilters, (nextFilters) => {
           {{ store.getCategoryIcon(group.category) }}
           {{ store.getCategoryLabel(group.category, locale) }}
           <span class="category-tab__count">{{ group.commands.length }}</span>
+        </button>
+      </div>
+
+      <div class="category-tabs category-tabs--secondary">
+        <button
+          class="category-tab category-tab--sm"
+          :class="{ 'category-tab--active': purpose === 'all' }"
+          @click="purpose = 'all'"
+        >
+          {{ t('registry.purpose.all') }}
+        </button>
+        <button
+          v-for="group in purposeGroups"
+          :key="group.value"
+          class="category-tab category-tab--sm"
+          :class="{ 'category-tab--active': purpose === group.value }"
+          @click="purpose = group.value as any"
+        >
+          {{ group.label }}
+          <span class="category-tab__count">{{ group.count }}</span>
         </button>
       </div>
 

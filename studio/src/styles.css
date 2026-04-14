@@ -1180,6 +1180,28 @@ select {
   opacity: 0.6;
 }
 
+.category-tabs--secondary {
+  margin-top: -2px;
+  gap: 6px;
+}
+
+.category-tab--sm {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.category-tab--sm .category-tab__count {
+  font-size: 10px;
+}
+
+.category-tab--sm.category-tab--active {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: rgba(37, 99, 235, 0.4);
+  color: #60a5fa;
+  box-shadow: none;
+}
+
 /* ── 目录（Drawer） ── */
 
 .catalog-drawer {
