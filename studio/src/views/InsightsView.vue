@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NInputNumber, NTag, useMessage } from 'naive-ui';
+import { NAlert, NButton, NCard, NEmpty, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NTag, useMessage } from 'naive-ui';
 import PresetShelf from '../components/PresetShelf.vue';
 import ResultPanel from '../components/ResultPanel.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
+import { buildResultComparison } from '../lib/compare';
 import { buildInsightPresetState, readInsightPresetState } from '../lib/preset-state';
 import { buildInsightQuery, buildWorkbenchQuery, parseInsightQuery } from '../lib/routes';
+import { buildSnapshotTimelineRows } from '../lib/timeline';
 import { useStudioStore } from '../stores/studio';
-import type { StudioPresetEntry } from '../types';
+import type { StudioPresetEntry, StudioSnapshotEntry } from '../types';
 
 const store = useStudioStore();
 const route = useRoute();
@@ -16,7 +18,13 @@ const router = useRouter();
 const message = useMessage();
 
 const recipeModel = reactive<Record<string, any>>({});
+const jobModel = reactive({
+  intervalMinutes: 60,
+  enabled: true,
+});
 const pendingRecipeArgs = ref<Record<string, unknown> | null>(store.consumeInsightArgs());
+const leftSnapshotId = ref<number | null>(null);
+const rightSnapshotId = ref<number | null>(null);
 
 const initialInsightState = parseInsightQuery(route.query);
 if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
@@ -53,9 +61,54 @@ const currentResult = computed(() =>
     ? store.lastExecution.result
     : undefined,
 );
+
 const isFavoriteRecipe = computed(() =>
   recipe.value ? store.favoriteRecipeIds.has(recipe.value.id) : false,
 );
+
+const currentSnapshots = computed<StudioSnapshotEntry[]>(() => {
+  const recipeItem = recipe.value;
+  if (!recipeItem) return [];
+  return store.snapshotsBySource[`recipe:${recipeItem.id}`] ?? [];
+});
+
+const currentJob = computed(() => {
+  const recipeItem = recipe.value;
+  if (!recipeItem) return null;
+  return store.jobs.find((job) => job.sourceKind === 'recipe' && job.sourceId === recipeItem.id) ?? null;
+});
+
+const snapshotOptions = computed(() =>
+  currentSnapshots.value.map((snapshot) => ({
+    label: `${new Date(snapshot.capturedAt).toLocaleString()} · ${snapshot.status}`,
+    value: snapshot.id,
+  })),
+);
+
+const timelineResult = computed(() => ({
+  items: buildSnapshotTimelineRows(currentSnapshots.value),
+}));
+
+const leftSnapshot = computed(() =>
+  currentSnapshots.value.find((snapshot) => snapshot.id === leftSnapshotId.value) ?? null,
+);
+
+const rightSnapshot = computed(() =>
+  currentSnapshots.value.find((snapshot) => snapshot.id === rightSnapshotId.value) ?? null,
+);
+
+const snapshotComparisonResult = computed(() => {
+  if (!leftSnapshot.value || !rightSnapshot.value) return undefined;
+  return buildResultComparison(leftSnapshot.value.result, rightSnapshot.value.result);
+});
+
+const intervalOptions = [
+  { label: '15 min', value: 15 },
+  { label: '60 min', value: 60 },
+  { label: '180 min', value: 180 },
+  { label: '360 min', value: 360 },
+  { label: '1440 min', value: 1440 },
+];
 
 function normalizeInputValue(value: unknown): string | number | boolean {
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -88,11 +141,41 @@ function queueRecipeArgs(args: Record<string, unknown>): void {
   pendingRecipeArgs.value = { ...args };
 }
 
-watch(recipe, () => {
+watch(recipe, (recipeItem) => {
   resetRecipeModel();
+  if (recipeItem) {
+    void store.refreshSnapshots('recipe', recipeItem.id);
+  }
   if (pendingRecipeArgs.value) {
     applyArgsToRecipeModel(pendingRecipeArgs.value);
     pendingRecipeArgs.value = null;
+  }
+}, { immediate: true });
+
+watch(currentJob, (job) => {
+  if (job) {
+    jobModel.intervalMinutes = job.intervalMinutes;
+    jobModel.enabled = job.enabled;
+    return;
+  }
+
+  jobModel.intervalMinutes = 60;
+  jobModel.enabled = true;
+});
+
+watch(currentSnapshots, (snapshots) => {
+  if (!snapshots.length) {
+    leftSnapshotId.value = null;
+    rightSnapshotId.value = null;
+    return;
+  }
+
+  if (!snapshots.some((snapshot) => snapshot.id === leftSnapshotId.value)) {
+    leftSnapshotId.value = snapshots[0]?.id ?? null;
+  }
+
+  if (!snapshots.some((snapshot) => snapshot.id === rightSnapshotId.value)) {
+    rightSnapshotId.value = snapshots[1]?.id ?? snapshots[0]?.id ?? null;
   }
 }, { immediate: true });
 
@@ -137,6 +220,18 @@ async function runRecipe(): Promise<void> {
   await store.runRecipe(recipe.value.id, normalizedArgs());
 }
 
+async function captureRecipeSnapshot(): Promise<void> {
+  if (!recipe.value) return;
+
+  await store.captureSourceSnapshot({
+    sourceKind: 'recipe',
+    sourceId: recipe.value.id,
+    command: recipe.value.command,
+    args: normalizedArgs(),
+  });
+  message.success(`Captured snapshot for ${recipe.value.title}`);
+}
+
 async function toggleRecipeFavorite(): Promise<void> {
   if (!recipe.value) return;
 
@@ -159,6 +254,39 @@ async function saveInsightPreset(input: { name: string; description: string }): 
     }),
   });
   message.success(`Saved insight preset "${input.name}"`);
+}
+
+async function saveRecipeJob(): Promise<void> {
+  if (!recipe.value) return;
+
+  const job = await store.saveJob({
+    id: currentJob.value?.id,
+    sourceKind: 'recipe',
+    sourceId: recipe.value.id,
+    command: recipe.value.command,
+    name: `${recipe.value.title} Snapshot Job`,
+    description: recipe.value.description,
+    args: normalizedArgs(),
+    intervalMinutes: jobModel.intervalMinutes,
+    enabled: jobModel.enabled,
+  });
+  message.success(job.enabled ? `Saved snapshot job "${job.name}"` : `Updated disabled snapshot job "${job.name}"`);
+}
+
+async function runRecipeJobNow(): Promise<void> {
+  if (!currentJob.value) return;
+  const jobName = currentJob.value.name;
+  await store.runJobNow(currentJob.value.id);
+  message.success(`Ran snapshot job "${jobName}"`);
+}
+
+async function deleteRecipeJob(): Promise<void> {
+  if (!currentJob.value) return;
+  const jobName = currentJob.value.name;
+  const proceed = window.confirm(`Delete snapshot job "${jobName}"?`);
+  if (!proceed) return;
+  await store.deleteJob(currentJob.value.id);
+  message.success(`Deleted snapshot job "${jobName}"`);
 }
 
 function openInWorkbench(): void {
@@ -263,12 +391,71 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
           <div class="card-actions">
             <n-button type="primary" :loading="store.runningCommand" @click="runRecipe()">Run Recipe</n-button>
             <n-button tertiary @click="openInWorkbench()">Open in Workbench</n-button>
+            <n-button tertiary :loading="store.runningSnapshot" @click="captureRecipeSnapshot()">Capture Snapshot</n-button>
             <n-button tertiary @click="resetRecipeModel()">Reset Defaults</n-button>
           </div>
         </template>
       </n-card>
 
       <div class="page-grid">
+        <n-card title="Snapshot Timeline" class="glass-card">
+          <template v-if="recipe">
+            <div class="card-actions card-actions--between">
+              <div class="panel-note">
+                {{ currentSnapshots.length }} snapshots captured for this recipe. The timeline is derived from the leading numeric series in each result.
+              </div>
+              <n-button size="small" quaternary @click="store.refreshSnapshots('recipe', recipe.id)">Refresh</n-button>
+            </div>
+            <result-panel
+              :title="`${recipe.title} timeline`"
+              :result="currentSnapshots.length ? timelineResult : undefined"
+            />
+          </template>
+        </n-card>
+
+        <n-card title="Snapshot Job" class="glass-card">
+          <template v-if="recipe">
+            <n-form label-placement="top">
+              <n-form-item label="Capture cadence">
+                <n-select v-model:value="jobModel.intervalMinutes" :options="intervalOptions" />
+              </n-form-item>
+              <n-form-item label="Enabled">
+                <div class="switch-inline switch-inline--wide">
+                  <span>{{ currentJob?.nextRunAt ? `Next run ${new Date(currentJob.nextRunAt).toLocaleString()}` : 'Job will start scheduling after save' }}</span>
+                  <n-switch v-model:value="jobModel.enabled" />
+                </div>
+              </n-form-item>
+            </n-form>
+
+            <div v-if="currentJob" class="chip-cloud">
+              <n-tag size="small" :type="currentJob.lastStatus === 'error' ? 'error' : currentJob.lastStatus === 'success' ? 'success' : 'warning'">
+                {{ currentJob.lastStatus }}
+              </n-tag>
+              <span class="chip chip--small">last {{ currentJob.lastRunAt ? new Date(currentJob.lastRunAt).toLocaleString() : 'never' }}</span>
+            </div>
+
+            <div class="card-actions">
+              <n-button type="primary" @click="saveRecipeJob()">Save Job</n-button>
+              <n-button tertiary :disabled="!currentJob" @click="runRecipeJobNow()">Run Now</n-button>
+              <n-button tertiary :disabled="!currentJob" @click="deleteRecipeJob()">Delete Job</n-button>
+            </div>
+          </template>
+        </n-card>
+
+        <n-card title="Compare Snapshots" class="glass-card">
+          <template v-if="currentSnapshots.length">
+            <div class="compare-grid">
+              <n-select v-model:value="leftSnapshotId" :options="snapshotOptions" placeholder="Base snapshot" />
+              <n-select v-model:value="rightSnapshotId" :options="snapshotOptions" placeholder="Target snapshot" />
+            </div>
+            <result-panel
+              :title="recipe ? `${recipe.title} snapshot diff` : 'Snapshot diff'"
+              :result="snapshotComparisonResult"
+            />
+          </template>
+          <n-empty v-else description="Capture at least one snapshot to compare recipe output over time." />
+        </n-card>
+
         <n-card title="Saved Presets" class="glass-card">
           <preset-shelf
             :presets="store.insightPresets"

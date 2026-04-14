@@ -18,6 +18,15 @@ describe('buildOverviewMetrics', () => {
         { id: 'bilibili-hot' },
         { id: 'google-trends' },
       ],
+      jobs: [
+        { id: 1, enabled: true },
+        { id: 2, enabled: false },
+      ],
+      snapshots: [
+        { id: 10 },
+        { id: 11 },
+        { id: 12 },
+      ],
     });
 
     expect(metrics).toEqual({
@@ -28,6 +37,9 @@ describe('buildOverviewMetrics', () => {
       recentRuns: 3,
       successfulRuns: 2,
       recipes: 2,
+      jobs: 2,
+      activeJobs: 1,
+      snapshots: 3,
     });
   });
 });

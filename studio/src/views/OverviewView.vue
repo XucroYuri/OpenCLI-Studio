@@ -17,6 +17,8 @@ const metrics = computed(() => buildOverviewMetrics({
   commands: store.registry.commands,
   history: store.history,
   recipes: store.recipes,
+  jobs: store.jobs,
+  snapshots: store.recentSnapshots,
 }));
 
 const leadingSites = computed(() => store.registry.sites.slice(0, 10));
@@ -29,9 +31,15 @@ const favoriteRecipes = computed(() =>
   store.recipes.filter((recipe) => store.favoriteRecipeIds.has(recipe.id)).slice(0, 5),
 );
 const recentPresets = computed(() => store.presets.slice(0, 6));
+const activeJobs = computed(() => store.jobs.filter((job) => job.enabled).slice(0, 6));
+const recentSnapshots = computed(() => store.recentSnapshots.slice(0, 6));
 
 async function handleDoctor(): Promise<void> {
   await store.runDoctor();
+}
+
+async function refreshSnapshots(): Promise<void> {
+  await store.refreshRecentSnapshots();
 }
 
 function openWorkbench(command?: string): void {
@@ -99,6 +107,15 @@ async function removePreset(preset: StudioPresetEntry): Promise<void> {
   await store.deletePreset(preset.id);
   message.success(`Deleted preset "${preset.name}"`);
 }
+
+function openSnapshotSource(sourceKind: string, sourceId: string, command: string): void {
+  if (sourceKind === 'recipe') {
+    openInsight(sourceId);
+    return;
+  }
+
+  openWorkbench(command);
+}
 </script>
 
 <template>
@@ -133,6 +150,14 @@ async function removePreset(preset: StudioPresetEntry): Promise<void> {
         <div class="metric-tile">
           <span>Recipes</span>
           <strong>{{ metrics.recipes }}</strong>
+        </div>
+        <div class="metric-tile">
+          <span>Snapshot jobs</span>
+          <strong>{{ metrics.jobs }}</strong>
+        </div>
+        <div class="metric-tile">
+          <span>Snapshots</span>
+          <strong>{{ metrics.snapshots }}</strong>
         </div>
       </div>
     </n-card>
@@ -179,6 +204,51 @@ async function removePreset(preset: StudioPresetEntry): Promise<void> {
           </button>
         </div>
         <n-empty v-else description="No runs captured yet." />
+      </n-card>
+    </div>
+
+    <div class="split-grid">
+      <n-card title="Snapshot Jobs" class="glass-card">
+        <div v-if="activeJobs.length" class="stack-list">
+          <div v-for="job in activeJobs" :key="job.id" class="stack-row">
+            <button class="stack-row__primary" @click="openSnapshotSource(job.sourceKind, job.sourceId, job.command)">
+              <strong>{{ job.name }}</strong>
+              <span>{{ job.command }} · every {{ job.intervalMinutes }} min</span>
+            </button>
+            <div class="stack-row__meta">
+              <n-tag size="small" :type="job.lastStatus === 'error' ? 'error' : job.lastStatus === 'success' ? 'success' : 'warning'">
+                {{ job.lastStatus }}
+              </n-tag>
+              <span>{{ job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : 'Not scheduled' }}</span>
+            </div>
+          </div>
+        </div>
+        <n-empty v-else description="No active snapshot jobs yet." />
+      </n-card>
+
+      <n-card title="Recent Snapshots" class="glass-card">
+        <div class="card-actions card-actions--between">
+          <div class="panel-note">Latest captured snapshots across recipes and command-level monitoring.</div>
+          <n-button size="small" quaternary :loading="store.runningSnapshot" @click="refreshSnapshots()">Refresh</n-button>
+        </div>
+        <div v-if="recentSnapshots.length" class="stack-list">
+          <button
+            v-for="snapshot in recentSnapshots"
+            :key="snapshot.id"
+            class="stack-row"
+            @click="openSnapshotSource(snapshot.sourceKind, snapshot.sourceId, snapshot.command)"
+          >
+            <div>
+              <strong>{{ snapshot.sourceName }}</strong>
+              <span>{{ new Date(snapshot.capturedAt).toLocaleString() }}</span>
+            </div>
+            <div class="stack-row__meta">
+              <n-tag :type="snapshot.status === 'success' ? 'success' : 'error'" size="small">{{ snapshot.status }}</n-tag>
+              <span>{{ snapshot.durationMs }} ms</span>
+            </div>
+          </button>
+        </div>
+        <n-empty v-else description="No snapshots captured yet." />
       </n-card>
     </div>
 

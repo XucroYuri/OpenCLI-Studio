@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NTag, useMessage } from 'naive-ui';
+import { NAlert, NButton, NCard, NEmpty, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NTag, useMessage } from 'naive-ui';
 import PresetShelf from '../components/PresetShelf.vue';
 import ResultPanel from '../components/ResultPanel.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
+import { buildResultComparison } from '../lib/compare';
 import { buildWorkbenchPresetState, readWorkbenchPresetState } from '../lib/preset-state';
 import { pickDefaultWorkbenchCommand } from '../lib/registry';
 import { buildWorkbenchQuery, parseWorkbenchQuery } from '../lib/routes';
@@ -18,6 +19,8 @@ const message = useMessage();
 
 const formModel = reactive<Record<string, any>>({});
 const pendingFormArgs = ref<Record<string, unknown> | null>(store.consumeWorkbenchArgs());
+const leftRunId = ref<number | null>(null);
+const rightRunId = ref<number | null>(null);
 
 const initialWorkbenchState = parseWorkbenchQuery(route.query);
 if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
@@ -55,8 +58,27 @@ const command = computed(() =>
 const recentRuns = computed(() =>
   store.history.filter((entry) => entry.command === selectedCommandName.value).slice(0, 5),
 );
+const runOptions = computed(() =>
+  recentRuns.value.map((entry) => ({
+    label: `${new Date(entry.startedAt).toLocaleString()} · ${entry.status}`,
+    value: entry.id,
+  })),
+);
 const isFavoriteCommand = computed(() =>
   command.value ? store.favoriteCommandIds.has(command.value.command) : false,
+);
+const comparedLeftRun = computed(() =>
+  recentRuns.value.find((entry) => entry.id === leftRunId.value) ?? null,
+);
+const comparedRightRun = computed(() =>
+  recentRuns.value.find((entry) => entry.id === rightRunId.value) ?? null,
+);
+const runComparisonResult = computed(() => {
+  if (!comparedLeftRun.value || !comparedRightRun.value) return undefined;
+  return buildResultComparison(comparedLeftRun.value.result, comparedRightRun.value.result);
+});
+const commandSnapshots = computed(() =>
+  command.value ? store.snapshotsBySource[`command:${command.value.command}`] ?? [] : [],
 );
 
 function inferFieldKind(arg: StudioCommandArg): 'select' | 'number' | 'boolean' | 'text' {
@@ -115,10 +137,29 @@ function queueArgs(args: Record<string, unknown>): void {
 }
 
 watch(command, (nextCommand) => {
+  if (nextCommand) {
+    void store.refreshSnapshots('command', nextCommand.command);
+  }
   resetForm(nextCommand?.command ?? null);
   if (pendingFormArgs.value) {
     applyArgsToForm(pendingFormArgs.value);
     pendingFormArgs.value = null;
+  }
+}, { immediate: true });
+
+watch(recentRuns, (runs) => {
+  if (!runs.length) {
+    leftRunId.value = null;
+    rightRunId.value = null;
+    return;
+  }
+
+  if (!runs.some((entry) => entry.id === leftRunId.value)) {
+    leftRunId.value = runs[0]?.id ?? null;
+  }
+
+  if (!runs.some((entry) => entry.id === rightRunId.value)) {
+    rightRunId.value = runs[1]?.id ?? runs[0]?.id ?? null;
   }
 }, { immediate: true });
 
@@ -231,6 +272,17 @@ async function handleRun(): Promise<void> {
   await store.runCommand(command.value.command, collectArgs());
 }
 
+async function captureCommandSnapshot(): Promise<void> {
+  if (!command.value) return;
+  await store.captureSourceSnapshot({
+    sourceKind: 'command',
+    sourceId: command.value.command,
+    command: command.value.command,
+    args: collectArgs(),
+  });
+  message.success(`Captured snapshot for ${command.value.command}`);
+}
+
 function selectCommand(commandName: string): void {
   selectedCommandName.value = commandName;
 }
@@ -323,6 +375,22 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
           @remove="removeWorkbenchPreset"
         />
       </n-card>
+
+      <n-card title="Command Snapshots" class="glass-card">
+        <div v-if="commandSnapshots.length" class="stack-list">
+          <div v-for="snapshot in commandSnapshots.slice(0, 5)" :key="snapshot.id" class="stack-row">
+            <div>
+              <strong>{{ new Date(snapshot.capturedAt).toLocaleString() }}</strong>
+              <span>{{ snapshot.command }}</span>
+            </div>
+            <div class="stack-row__meta">
+              <n-tag :type="snapshot.status === 'success' ? 'success' : 'error'" size="small">{{ snapshot.status }}</n-tag>
+              <span>{{ snapshot.durationMs }} ms</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="panel-note">No command snapshots yet. Use Capture Snapshot after filling args.</div>
+      </n-card>
     </div>
 
     <div class="workbench-column workbench-column--wide">
@@ -362,6 +430,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
 
         <div class="card-actions">
           <n-button type="primary" :loading="store.runningCommand" @click="handleRun()">Run Command</n-button>
+          <n-button tertiary :loading="store.runningSnapshot" @click="captureCommandSnapshot()">Capture Snapshot</n-button>
           <n-button tertiary @click="resetForm(command?.command ?? null)">Reset Args</n-button>
           <save-preset-button
             button-label="Save Preset"
@@ -373,6 +442,20 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
             :save="saveWorkbenchPreset"
           />
         </div>
+      </n-card>
+
+      <n-card title="Compare Recent Runs" class="glass-card">
+        <template v-if="recentRuns.length">
+          <div class="compare-grid">
+            <n-select v-model:value="leftRunId" :options="runOptions" placeholder="Base run" />
+            <n-select v-model:value="rightRunId" :options="runOptions" placeholder="Target run" />
+          </div>
+          <result-panel
+            :title="command ? `${command.command} run diff` : 'Run diff'"
+            :result="runComparisonResult"
+          />
+        </template>
+        <n-empty v-else description="Run the command a few times to compare result changes." />
       </n-card>
 
       <result-panel

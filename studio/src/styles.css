@@ -201,6 +201,11 @@ a {
   gap: 12px;
 }
 
+.card-actions--between {
+  justify-content: space-between;
+  align-items: center;
+}
+
 .metrics-grid,
 .recipe-grid,
 .command-grid,
@@ -216,7 +221,7 @@ a {
 }
 
 .metrics-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .metric-tile,
@@ -364,7 +369,8 @@ a {
 .filter-bar,
 .result-panel__summary,
 .switch-inline,
-.command-inspector {
+.command-inspector,
+.compare-grid {
   display: flex;
   gap: 14px;
 }
@@ -437,6 +443,10 @@ a {
 
 .command-inspector {
   flex-direction: column;
+}
+
+.compare-grid {
+  margin-bottom: 16px;
 }
 
 .preset-item {
@@ -514,6 +524,10 @@ a {
 
   .filter-bar {
     grid-template-columns: 1fr;
+  }
+
+  .compare-grid {
+    flex-direction: column;
   }
 
   .panel-toolbar,
