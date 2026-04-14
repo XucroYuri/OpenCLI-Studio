@@ -151,3 +151,11 @@ The current foundation intentionally leaves room for deeper stages:
 - richer plugin and external CLI classification
 - result export and shareable local reports
 - more granular recipe coverage for platform-specific analytics
+
+## Resume Handoff
+
+The current continuation plan for the Studio branch lives at:
+
+- [docs/superpowers/plans/opencli-studio/2026-04-14-opencli-studio-next-phase-handoff.md](../superpowers/plans/opencli-studio/2026-04-14-opencli-studio-next-phase-handoff.md)
+
+If a future agent reopens this project, start with this document first and then inspect the most recent `feature/opencli-studio` commits.
