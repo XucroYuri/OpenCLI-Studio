@@ -91,3 +91,53 @@ export interface StudioHistoryEntry {
   finishedAt: string;
   durationMs: number;
 }
+
+export type StudioSnapshotSourceKind = 'command' | 'recipe';
+
+export interface StudioSnapshotEntry {
+  id: number;
+  sourceKind: StudioSnapshotSourceKind;
+  sourceId: string;
+  sourceName: string;
+  command: string;
+  args: Record<string, unknown>;
+  status: 'success' | 'error';
+  result: unknown;
+  error: { message: string } | null;
+  capturedAt: string;
+  durationMs: number;
+}
+
+export interface StudioSnapshotListOptions {
+  sourceKind?: StudioSnapshotSourceKind;
+  sourceId?: string;
+  limit?: number;
+}
+
+export interface StudioSnapshotMetricsPoint {
+  snapshotId: number;
+  capturedAt: string;
+  status: 'success' | 'error';
+  count: number;
+  primaryLabel: string | null;
+  primaryValue: number | null;
+}
+
+export type StudioJobSourceKind = StudioSnapshotSourceKind;
+
+export interface StudioJobEntry {
+  id: number;
+  sourceKind: StudioJobSourceKind;
+  sourceId: string;
+  command: string;
+  name: string;
+  description: string | null;
+  args: Record<string, unknown>;
+  intervalMinutes: number;
+  enabled: boolean;
+  lastStatus: 'idle' | 'success' | 'error';
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

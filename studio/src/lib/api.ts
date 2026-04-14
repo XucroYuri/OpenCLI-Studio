@@ -5,10 +5,13 @@ import type {
   StudioDoctorResult,
   StudioEnv,
   StudioHistoryEntry,
+  StudioJobEntry,
   StudioPresetEntry,
   StudioPresetKind,
   StudioRecipe,
   StudioRegistryPayload,
+  StudioSnapshotEntry,
+  StudioSnapshotSourceKind,
 } from '../types';
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
@@ -26,6 +29,32 @@ export async function fetchRegistry(): Promise<StudioRegistryPayload> {
 
 export async function fetchHistory(): Promise<{ entries: StudioHistoryEntry[] }> {
   return requestJson<{ entries: StudioHistoryEntry[] }>('/api/history');
+}
+
+export async function fetchSnapshots(input: {
+  sourceKind?: StudioSnapshotSourceKind;
+  sourceId?: string;
+  limit?: number;
+} = {}): Promise<{ entries: StudioSnapshotEntry[] }> {
+  const query = new URLSearchParams();
+  if (input.sourceKind) query.set('sourceKind', input.sourceKind);
+  if (input.sourceId) query.set('sourceId', input.sourceId);
+  if (input.limit) query.set('limit', String(input.limit));
+  const suffix = query.size ? `?${query.toString()}` : '';
+  return requestJson<{ entries: StudioSnapshotEntry[] }>(`/api/snapshots${suffix}`);
+}
+
+export async function captureSnapshot(input: {
+  sourceKind: StudioSnapshotSourceKind;
+  sourceId: string;
+  command?: string;
+  args?: Record<string, unknown>;
+}): Promise<{ snapshot: StudioSnapshotEntry }> {
+  return requestJson<{ snapshot: StudioSnapshotEntry }>('/api/snapshots', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function fetchEnv(): Promise<StudioEnv> {
@@ -54,6 +83,40 @@ export async function setFavorite(
 
 export async function fetchPresets(): Promise<{ presets: StudioPresetEntry[] }> {
   return requestJson<{ presets: StudioPresetEntry[] }>('/api/presets');
+}
+
+export async function fetchJobs(): Promise<{ jobs: StudioJobEntry[] }> {
+  return requestJson<{ jobs: StudioJobEntry[] }>('/api/jobs');
+}
+
+export async function saveJob(input: {
+  id?: number;
+  sourceKind: StudioSnapshotSourceKind;
+  sourceId: string;
+  command: string;
+  name: string;
+  description?: string | null;
+  args: Record<string, unknown>;
+  intervalMinutes: number;
+  enabled: boolean;
+}): Promise<{ job: StudioJobEntry }> {
+  return requestJson<{ job: StudioJobEntry }>('/api/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function runJobNow(id: number): Promise<{ job: StudioJobEntry; snapshot: StudioSnapshotEntry }> {
+  return requestJson<{ job: StudioJobEntry; snapshot: StudioSnapshotEntry }>(`/api/jobs/${id}/run`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteJob(id: number): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>(`/api/jobs/${id}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function savePreset(input: {

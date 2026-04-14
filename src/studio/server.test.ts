@@ -244,6 +244,94 @@ describe('startStudioServer', () => {
     expect(emptyPresets.presets).toEqual([]);
   });
 
+  it('stores snapshot jobs and can run them to capture snapshots', async () => {
+    const execute = vi.fn(async (_command: CliCommand, args: Record<string, unknown>) => ({
+      items: [{ title: `Trend ${String(args.region ?? 'US')}`, score: 92 }],
+    }));
+
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'google',
+          name: 'trends',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      execute,
+      doctor: vi.fn(async () => ({ ok: true, summary: 'healthy' })),
+    });
+
+    const createJobResponse = await fetch(`${server.url}/api/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sourceKind: 'recipe',
+        sourceId: 'google-trends',
+        command: 'google/trends',
+        name: 'Google Trends Hourly',
+        args: { region: 'US', limit: 5 },
+        intervalMinutes: 60,
+        enabled: true,
+      }),
+    });
+    const createJob = await createJobResponse.json() as {
+      job: { id: number; sourceId: string; command: string };
+    };
+
+    expect(createJob.job).toMatchObject({
+      sourceId: 'google-trends',
+      command: 'google/trends',
+    });
+
+    const jobsResponse = await fetch(`${server.url}/api/jobs`);
+    const jobs = await jobsResponse.json() as {
+      jobs: Array<{ id: number; sourceId: string }>;
+    };
+    expect(jobs.jobs).toMatchObject([
+      {
+        id: createJob.job.id,
+        sourceId: 'google-trends',
+      },
+    ]);
+
+    const runJobResponse = await fetch(`${server.url}/api/jobs/${createJob.job.id}/run`, {
+      method: 'POST',
+    });
+    const runJob = await runJobResponse.json() as {
+      snapshot: { sourceKind: string; sourceId: string; command: string };
+      job: { id: number; lastStatus: string };
+    };
+
+    expect(runJob.snapshot).toMatchObject({
+      sourceKind: 'recipe',
+      sourceId: 'google-trends',
+      command: 'google/trends',
+    });
+    expect(runJob.job).toMatchObject({
+      id: createJob.job.id,
+      lastStatus: 'success',
+    });
+
+    const snapshotsResponse = await fetch(`${server.url}/api/snapshots?sourceKind=recipe&sourceId=google-trends`);
+    const snapshots = await snapshotsResponse.json() as {
+      entries: Array<{ sourceId: string; status: string }>;
+    };
+    expect(snapshots.entries).toMatchObject([
+      {
+        sourceId: 'google-trends',
+        status: 'success',
+      },
+    ]);
+
+    const deleteJobResponse = await fetch(`${server.url}/api/jobs/${createJob.job.id}`, {
+      method: 'DELETE',
+    });
+    expect(deleteJobResponse.status).toBe(200);
+  });
+
   it('serves static assets and falls back to index.html for the app shell', async () => {
     const staticDir = path.join(tempDir, 'static');
     await fs.mkdir(path.join(staticDir, 'assets'), { recursive: true });

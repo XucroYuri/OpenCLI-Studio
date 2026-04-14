@@ -53,6 +53,39 @@ export interface StudioHistoryEntry {
   durationMs: number;
 }
 
+export type StudioSnapshotSourceKind = 'command' | 'recipe';
+
+export interface StudioSnapshotEntry {
+  id: number;
+  sourceKind: StudioSnapshotSourceKind;
+  sourceId: string;
+  sourceName: string;
+  command: string;
+  args: Record<string, unknown>;
+  status: 'success' | 'error';
+  result: unknown;
+  error: { message: string } | null;
+  capturedAt: string;
+  durationMs: number;
+}
+
+export interface StudioJobEntry {
+  id: number;
+  sourceKind: StudioSnapshotSourceKind;
+  sourceId: string;
+  command: string;
+  name: string;
+  description: string | null;
+  args: Record<string, unknown>;
+  intervalMinutes: number;
+  enabled: boolean;
+  lastStatus: 'idle' | 'success' | 'error';
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StudioRecipe {
   id: string;
   title: string;

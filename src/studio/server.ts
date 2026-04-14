@@ -8,8 +8,9 @@ import { getRegistry, type CliCommand } from '../registry.js';
 import { PKG_VERSION } from '../version.js';
 import { buildStudioRegistry } from './metadata.js';
 import { listStudioRecipes } from './recipes.js';
+import { StudioJobScheduler } from './scheduler.js';
 import { StudioStore } from './store.js';
-import type { StudioFavoriteKind, StudioPresetKind } from './types.js';
+import type { StudioFavoriteKind, StudioPresetKind, StudioSnapshotSourceKind } from './types.js';
 
 export type StudioDoctorResult = Record<string, unknown>;
 
@@ -45,6 +46,25 @@ interface PresetRequestBody {
   name: string;
   description?: string | null;
   state: Record<string, unknown>;
+}
+
+interface SnapshotRequestBody {
+  sourceKind: StudioSnapshotSourceKind;
+  sourceId: string;
+  command?: string;
+  args?: Record<string, unknown>;
+}
+
+interface JobRequestBody {
+  id?: number;
+  sourceKind: StudioSnapshotSourceKind;
+  sourceId: string;
+  command: string;
+  name: string;
+  description?: string | null;
+  args: Record<string, unknown>;
+  intervalMinutes: number;
+  enabled: boolean;
 }
 
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -190,6 +210,80 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
   const registry = buildStudioRegistry(commands);
   const commandMap = createCommandMap(commands);
   const recipes = listStudioRecipes(commands);
+  const recipeMap = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+
+  function resolveSourceName(sourceKind: StudioSnapshotSourceKind, sourceId: string, fallbackCommand: string): string {
+    if (sourceKind === 'recipe') {
+      return recipeMap.get(sourceId)?.title ?? fallbackCommand;
+    }
+    return sourceId;
+  }
+
+  async function captureSnapshot(body: SnapshotRequestBody) {
+    const commandName = body.command
+      ?? (body.sourceKind === 'recipe' ? recipeMap.get(body.sourceId)?.command : body.sourceId);
+    if (!commandName) {
+      throw new Error(`Unknown snapshot source: ${body.sourceKind}:${body.sourceId}`);
+    }
+
+    const command = commandMap.get(commandName);
+    if (!command) {
+      throw new Error(`Unknown command: ${commandName}`);
+    }
+
+    const args = body.sourceKind === 'recipe'
+      ? {
+          ...(recipeMap.get(body.sourceId)?.defaultArgs ?? {}),
+          ...(body.args ?? {}),
+        }
+      : (body.args ?? {});
+
+    const capturedAt = new Date().toISOString();
+    const started = Date.now();
+
+    try {
+      const result = await execute(command, args);
+      return store.recordSnapshot({
+        sourceKind: body.sourceKind,
+        sourceId: body.sourceId,
+        sourceName: resolveSourceName(body.sourceKind, body.sourceId, commandName),
+        command: commandName,
+        args,
+        status: 'success',
+        result,
+        error: null,
+        capturedAt,
+        durationMs: Date.now() - started,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return store.recordSnapshot({
+        sourceKind: body.sourceKind,
+        sourceId: body.sourceId,
+        sourceName: resolveSourceName(body.sourceKind, body.sourceId, commandName),
+        command: commandName,
+        args,
+        status: 'error',
+        result: null,
+        error: { message },
+        capturedAt,
+        durationMs: Date.now() - started,
+      });
+    }
+  }
+
+  const scheduler = new StudioJobScheduler({
+    store,
+    resolveSourceName: (job) => resolveSourceName(job.sourceKind, job.sourceId, job.command),
+    execute: async (commandName, args) => {
+      const command = commandMap.get(commandName);
+      if (!command) {
+        throw new Error(`Unknown command: ${commandName}`);
+      }
+      return execute(command, args);
+    },
+  });
+  scheduler.start();
 
   const server = createServer((req, res) => {
     void (async () => {
@@ -214,6 +308,28 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
 
       if (method === 'GET' && pathname === '/api/history') {
         json(res, 200, { entries: store.listHistory() });
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/snapshots') {
+        const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+        const sourceKind = url.searchParams.get('sourceKind') as StudioSnapshotSourceKind | null;
+        const sourceId = url.searchParams.get('sourceId');
+        const limit = Number(url.searchParams.get('limit') ?? '50');
+        json(res, 200, {
+          entries: store.listSnapshots({
+            sourceKind: sourceKind ?? undefined,
+            sourceId: sourceId ?? undefined,
+            limit: Number.isFinite(limit) ? limit : 50,
+          }),
+        });
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/snapshots') {
+        const body = await readJsonBody<SnapshotRequestBody>(req);
+        const snapshot = await captureSnapshot(body);
+        json(res, 200, { snapshot });
         return;
       }
 
@@ -248,6 +364,43 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
           return;
         }
         store.deletePreset(presetId);
+        json(res, 200, { ok: true });
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/jobs') {
+        json(res, 200, { jobs: store.listJobs() });
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/jobs') {
+        const body = await readJsonBody<JobRequestBody>(req);
+        const job = store.saveJob(body);
+        scheduler.sync();
+        json(res, 200, { job });
+        return;
+      }
+
+      if (method === 'POST' && pathname.startsWith('/api/jobs/') && pathname.endsWith('/run')) {
+        const jobId = Number(pathname.replace('/api/jobs/', '').replace('/run', ''));
+        if (!Number.isFinite(jobId)) {
+          json(res, 400, { ok: false, error: 'Invalid job id' });
+          return;
+        }
+        const { job, snapshot } = await scheduler.runNow(jobId);
+        scheduler.sync();
+        json(res, 200, { job, snapshot });
+        return;
+      }
+
+      if (method === 'DELETE' && pathname.startsWith('/api/jobs/')) {
+        const jobId = Number(pathname.replace('/api/jobs/', ''));
+        if (!Number.isFinite(jobId)) {
+          json(res, 400, { ok: false, error: 'Invalid job id' });
+          return;
+        }
+        store.deleteJob(jobId);
+        scheduler.sync();
         json(res, 200, { ok: true });
         return;
       }
@@ -350,6 +503,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
   return {
     url: `http://${host}:${(address as AddressInfo).port}`,
     close: async () => {
+      scheduler.close();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) reject(error);

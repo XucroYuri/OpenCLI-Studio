@@ -1,15 +1,21 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import {
+  captureSnapshot as requestCaptureSnapshot,
+  deleteJob as requestDeleteJob,
   deletePreset as requestDeletePreset,
   executeCommand as postExecuteCommand,
   fetchDoctor,
   fetchEnv,
   fetchFavorites,
   fetchHistory,
+  fetchJobs,
   fetchPresets,
   fetchRecipes,
   fetchRegistry,
+  fetchSnapshots,
+  runJobNow as requestRunJobNow,
+  saveJob as requestSaveJob,
   savePreset as requestSavePreset,
   setFavorite as requestSetFavorite,
 } from '../lib/api';
@@ -21,10 +27,13 @@ import type {
   StudioDoctorResult,
   StudioEnv,
   StudioHistoryEntry,
+  StudioJobEntry,
   StudioPresetEntry,
   StudioPresetKind,
   StudioRecipe,
   StudioRegistryPayload,
+  StudioSnapshotEntry,
+  StudioSnapshotSourceKind,
 } from '../types';
 
 function getErrorMessage(error: unknown): string {
@@ -47,6 +56,9 @@ export const useStudioStore = defineStore('studio', () => {
   const registry = ref<StudioRegistryPayload>({ commands: [], sites: [] });
   const env = ref<StudioEnv | null>(null);
   const history = ref<StudioHistoryEntry[]>([]);
+  const recentSnapshots = ref<StudioSnapshotEntry[]>([]);
+  const snapshotsBySource = ref<Record<string, StudioSnapshotEntry[]>>({});
+  const jobs = ref<StudioJobEntry[]>([]);
   const recipes = ref<StudioRecipe[]>([]);
   const favorites = ref<StudioFavoriteEntry[]>([]);
   const presets = ref<StudioPresetEntry[]>([]);
@@ -57,6 +69,7 @@ export const useStudioStore = defineStore('studio', () => {
 
   const initializing = ref(false);
   const runningCommand = ref(false);
+  const runningSnapshot = ref(false);
   const runningDoctor = ref(false);
   const loadError = ref<string | null>(null);
   const executionError = ref<string | null>(null);
@@ -97,6 +110,10 @@ export const useStudioStore = defineStore('studio', () => {
   const insightPresets = computed(() =>
     presets.value.filter((preset) => preset.kind === 'insight'),
   );
+
+  function snapshotKey(sourceKind: StudioSnapshotSourceKind, sourceId: string): string {
+    return `${sourceKind}:${sourceId}`;
+  }
 
   function ensureSelectedCommand(): void {
     const nextCommand = pickDefaultWorkbenchCommand(
@@ -139,6 +156,8 @@ export const useStudioStore = defineStore('studio', () => {
         recipePayload,
         favoritesPayload,
         presetsPayload,
+        jobsPayload,
+        snapshotsPayload,
       ] = await Promise.all([
         fetchRegistry(),
         fetchHistory(),
@@ -146,6 +165,8 @@ export const useStudioStore = defineStore('studio', () => {
         fetchRecipes(),
         fetchFavorites(),
         fetchPresets(),
+        fetchJobs(),
+        fetchSnapshots({ limit: 12 }),
       ]);
 
       registry.value = registryPayload;
@@ -154,6 +175,8 @@ export const useStudioStore = defineStore('studio', () => {
       recipes.value = recipePayload.recipes;
       favorites.value = favoritesPayload.entries;
       presets.value = presetsPayload.presets;
+      jobs.value = jobsPayload.jobs;
+      recentSnapshots.value = snapshotsPayload.entries;
 
       selectedCommand.value = pickDefaultWorkbenchCommand(
         registryPayload.commands,
@@ -194,6 +217,20 @@ export const useStudioStore = defineStore('studio', () => {
     history.value = [entry, ...history.value.filter((item) => item.id !== entry.id)].slice(0, 50);
   }
 
+  function upsertSnapshot(entry: StudioSnapshotEntry): void {
+    recentSnapshots.value = [entry, ...recentSnapshots.value.filter((item) => item.id !== entry.id)].slice(0, 20);
+    const key = snapshotKey(entry.sourceKind, entry.sourceId);
+    const current = snapshotsBySource.value[key] ?? [];
+    snapshotsBySource.value = {
+      ...snapshotsBySource.value,
+      [key]: [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, 50),
+    };
+  }
+
+  function upsertJob(entry: StudioJobEntry): void {
+    jobs.value = [entry, ...jobs.value.filter((item) => item.id !== entry.id)];
+  }
+
   async function runCommand(command: string, args: Record<string, unknown>): Promise<ExecuteResponse> {
     runningCommand.value = true;
     executionError.value = null;
@@ -230,6 +267,19 @@ export const useStudioStore = defineStore('studio', () => {
     history.value = historyPayload.entries;
   }
 
+  async function refreshRecentSnapshots(): Promise<void> {
+    const snapshotsPayload = await fetchSnapshots({ limit: 12 });
+    recentSnapshots.value = snapshotsPayload.entries;
+  }
+
+  async function refreshSnapshots(sourceKind: StudioSnapshotSourceKind, sourceId: string, limit: number = 40): Promise<void> {
+    const snapshotsPayload = await fetchSnapshots({ sourceKind, sourceId, limit });
+    snapshotsBySource.value = {
+      ...snapshotsBySource.value,
+      [snapshotKey(sourceKind, sourceId)]: snapshotsPayload.entries,
+    };
+  }
+
   async function refreshFavorites(): Promise<void> {
     const favoritesPayload = await fetchFavorites();
     favorites.value = favoritesPayload.entries;
@@ -238,6 +288,60 @@ export const useStudioStore = defineStore('studio', () => {
   async function refreshPresets(): Promise<void> {
     const presetsPayload = await fetchPresets();
     presets.value = presetsPayload.presets;
+  }
+
+  async function refreshJobs(): Promise<void> {
+    const jobsPayload = await fetchJobs();
+    jobs.value = jobsPayload.jobs;
+  }
+
+  async function captureSourceSnapshot(input: {
+    sourceKind: StudioSnapshotSourceKind;
+    sourceId: string;
+    command?: string;
+    args?: Record<string, unknown>;
+  }): Promise<StudioSnapshotEntry> {
+    runningSnapshot.value = true;
+    executionError.value = null;
+
+    try {
+      const response = await requestCaptureSnapshot(input);
+      upsertSnapshot(response.snapshot);
+      return response.snapshot;
+    } catch (error) {
+      executionError.value = getErrorMessage(error);
+      throw error;
+    } finally {
+      runningSnapshot.value = false;
+    }
+  }
+
+  async function saveJob(input: {
+    id?: number;
+    sourceKind: StudioSnapshotSourceKind;
+    sourceId: string;
+    command: string;
+    name: string;
+    description?: string | null;
+    args: Record<string, unknown>;
+    intervalMinutes: number;
+    enabled: boolean;
+  }): Promise<StudioJobEntry> {
+    const response = await requestSaveJob(input);
+    upsertJob(response.job);
+    return response.job;
+  }
+
+  async function runJobNow(id: number): Promise<{ job: StudioJobEntry; snapshot: StudioSnapshotEntry }> {
+    const response = await requestRunJobNow(id);
+    upsertJob(response.job);
+    upsertSnapshot(response.snapshot);
+    return response;
+  }
+
+  async function deleteJob(id: number): Promise<void> {
+    await requestDeleteJob(id);
+    jobs.value = jobs.value.filter((job) => job.id !== id);
   }
 
   async function toggleFavorite(
@@ -281,6 +385,9 @@ export const useStudioStore = defineStore('studio', () => {
     registry,
     env,
     history,
+    recentSnapshots,
+    snapshotsBySource,
+    jobs,
     recipes,
     favorites,
     presets,
@@ -290,6 +397,7 @@ export const useStudioStore = defineStore('studio', () => {
     stagedInsightArgs,
     initializing,
     runningCommand,
+    runningSnapshot,
     runningDoctor,
     loadError,
     executionError,
@@ -315,8 +423,15 @@ export const useStudioStore = defineStore('studio', () => {
     runCommand,
     runRecipe,
     refreshHistory,
+    refreshRecentSnapshots,
+    refreshSnapshots,
     refreshFavorites,
     refreshPresets,
+    refreshJobs,
+    captureSourceSnapshot,
+    saveJob,
+    runJobNow,
+    deleteJob,
     toggleFavorite,
     savePreset,
     deletePreset,
