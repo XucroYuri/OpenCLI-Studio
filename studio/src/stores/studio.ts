@@ -7,10 +7,12 @@ import {
   executeCommand as postExecuteCommand,
   fetchDoctor,
   fetchEnv,
+  fetchExternalClis,
   fetchFavorites,
   fetchHistory,
   fetchJobs,
   fetchPresets,
+  fetchPlugins,
   fetchRecipes,
   fetchRegistry,
   fetchSnapshots,
@@ -22,12 +24,14 @@ import {
 import { listWorkbenchCommands, pickDefaultWorkbenchCommand } from '../lib/registry';
 import type {
   ExecuteResponse,
+  StudioExternalCliEntry,
   StudioFavoriteEntry,
   StudioFavoriteKind,
   StudioDoctorResult,
   StudioEnv,
   StudioHistoryEntry,
   StudioJobEntry,
+  StudioPluginEntry,
   StudioPresetEntry,
   StudioPresetKind,
   StudioRecipe,
@@ -59,6 +63,8 @@ export const useStudioStore = defineStore('studio', () => {
   const recentSnapshots = ref<StudioSnapshotEntry[]>([]);
   const snapshotsBySource = ref<Record<string, StudioSnapshotEntry[]>>({});
   const jobs = ref<StudioJobEntry[]>([]);
+  const plugins = ref<StudioPluginEntry[]>([]);
+  const externalClis = ref<StudioExternalCliEntry[]>([]);
   const recipes = ref<StudioRecipe[]>([]);
   const favorites = ref<StudioFavoriteEntry[]>([]);
   const presets = ref<StudioPresetEntry[]>([]);
@@ -154,6 +160,8 @@ export const useStudioStore = defineStore('studio', () => {
         historyPayload,
         envPayload,
         recipePayload,
+        pluginsPayload,
+        externalPayload,
         favoritesPayload,
         presetsPayload,
         jobsPayload,
@@ -163,6 +171,8 @@ export const useStudioStore = defineStore('studio', () => {
         fetchHistory(),
         fetchEnv(),
         fetchRecipes(),
+        fetchPlugins(),
+        fetchExternalClis(),
         fetchFavorites(),
         fetchPresets(),
         fetchJobs(),
@@ -173,6 +183,8 @@ export const useStudioStore = defineStore('studio', () => {
       history.value = historyPayload.entries;
       env.value = envPayload;
       recipes.value = recipePayload.recipes;
+      plugins.value = pluginsPayload.entries;
+      externalClis.value = externalPayload.entries;
       favorites.value = favoritesPayload.entries;
       presets.value = presetsPayload.presets;
       jobs.value = jobsPayload.jobs;
@@ -295,6 +307,17 @@ export const useStudioStore = defineStore('studio', () => {
     jobs.value = jobsPayload.jobs;
   }
 
+  async function refreshOpsInventory(): Promise<void> {
+    const [envPayload, pluginsPayload, externalPayload] = await Promise.all([
+      fetchEnv(),
+      fetchPlugins(),
+      fetchExternalClis(),
+    ]);
+    env.value = envPayload;
+    plugins.value = pluginsPayload.entries;
+    externalClis.value = externalPayload.entries;
+  }
+
   async function captureSourceSnapshot(input: {
     sourceKind: StudioSnapshotSourceKind;
     sourceId: string;
@@ -371,11 +394,11 @@ export const useStudioStore = defineStore('studio', () => {
     presets.value = presets.value.filter((preset) => preset.id !== id);
   }
 
-  async function runDoctor(): Promise<void> {
+  async function runDoctor(options: { live?: boolean; sessions?: boolean } = {}): Promise<void> {
     runningDoctor.value = true;
 
     try {
-      doctor.value = await fetchDoctor();
+      doctor.value = await fetchDoctor(options);
     } finally {
       runningDoctor.value = false;
     }
@@ -388,6 +411,8 @@ export const useStudioStore = defineStore('studio', () => {
     recentSnapshots,
     snapshotsBySource,
     jobs,
+    plugins,
+    externalClis,
     recipes,
     favorites,
     presets,
@@ -428,6 +453,7 @@ export const useStudioStore = defineStore('studio', () => {
     refreshFavorites,
     refreshPresets,
     refreshJobs,
+    refreshOpsInventory,
     captureSourceSnapshot,
     saveJob,
     runJobNow,

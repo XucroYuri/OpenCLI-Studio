@@ -1,11 +1,13 @@
 import type {
   ExecuteResponse,
+  StudioExternalCliEntry,
   StudioFavoriteEntry,
   StudioFavoriteKind,
   StudioDoctorResult,
   StudioEnv,
   StudioHistoryEntry,
   StudioJobEntry,
+  StudioPluginEntry,
   StudioPresetEntry,
   StudioPresetKind,
   StudioRecipe,
@@ -59,6 +61,14 @@ export async function captureSnapshot(input: {
 
 export async function fetchEnv(): Promise<StudioEnv> {
   return requestJson<StudioEnv>('/api/env');
+}
+
+export async function fetchPlugins(): Promise<{ entries: StudioPluginEntry[] }> {
+  return requestJson<{ entries: StudioPluginEntry[] }>('/api/plugins');
+}
+
+export async function fetchExternalClis(): Promise<{ entries: StudioExternalCliEntry[] }> {
+  return requestJson<{ entries: StudioExternalCliEntry[] }>('/api/external');
 }
 
 export async function fetchRecipes(): Promise<{ recipes: StudioRecipe[] }> {
@@ -139,9 +149,11 @@ export async function deletePreset(id: number): Promise<{ ok: boolean }> {
   });
 }
 
-export async function fetchDoctor(): Promise<StudioDoctorResult> {
+export async function fetchDoctor(input: { live?: boolean; sessions?: boolean } = {}): Promise<StudioDoctorResult> {
   return requestJson<StudioDoctorResult>('/api/doctor', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   });
 }
 

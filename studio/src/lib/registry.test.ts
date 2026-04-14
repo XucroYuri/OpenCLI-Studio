@@ -12,6 +12,7 @@ const COMMANDS: StudioCommandItem[] = [
     browser: true,
     strategy: 'cookie',
     meta: {
+      surface: 'builtin',
       mode: 'browser',
       capability: 'discovery',
       risk: 'safe',
@@ -32,6 +33,7 @@ const COMMANDS: StudioCommandItem[] = [
     browser: false,
     strategy: 'public',
     meta: {
+      surface: 'builtin',
       mode: 'public',
       capability: 'discovery',
       risk: 'safe',
@@ -52,6 +54,7 @@ const COMMANDS: StudioCommandItem[] = [
     browser: true,
     strategy: 'cookie',
     meta: {
+      surface: 'plugin',
       mode: 'browser',
       capability: 'action',
       risk: 'confirm',
@@ -70,6 +73,7 @@ describe('filterRegistryCommands', () => {
     const filtered = filterRegistryCommands(COMMANDS, {
       search: 'trend',
       site: 'google',
+      surface: 'builtin',
       mode: 'public',
       capability: 'all',
       risk: 'all',
@@ -84,6 +88,7 @@ describe('filterRegistryCommands', () => {
     const safeOnly = filterRegistryCommands(COMMANDS, {
       search: '',
       site: 'all',
+      surface: 'all',
       mode: 'all',
       capability: 'all',
       risk: 'all',
@@ -94,6 +99,7 @@ describe('filterRegistryCommands', () => {
     const advanced = filterRegistryCommands(COMMANDS, {
       search: '',
       site: 'all',
+      surface: 'all',
       mode: 'all',
       capability: 'all',
       risk: 'all',
@@ -103,6 +109,21 @@ describe('filterRegistryCommands', () => {
 
     expect(safeOnly.map((item) => item.command)).toEqual(['bilibili/hot', 'google/trends']);
     expect(advanced.map((item) => item.command)).toEqual(['bilibili/hot', 'google/trends', 'douyin/publish']);
+  });
+
+  it('filters commands by surface', () => {
+    const filtered = filterRegistryCommands(COMMANDS, {
+      search: '',
+      site: 'all',
+      surface: 'plugin',
+      mode: 'all',
+      capability: 'all',
+      risk: 'all',
+      supportsChartsOnly: false,
+      advancedMode: true,
+    });
+
+    expect(filtered.map((item) => item.command)).toEqual(['douyin/publish']);
   });
 });
 

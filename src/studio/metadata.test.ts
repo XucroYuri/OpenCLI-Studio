@@ -63,6 +63,19 @@ describe('buildStudioCommandMeta', () => {
     expect(meta.capability).toBe('action');
     expect(meta.risk).toBe('dangerous');
   });
+
+  it('marks plugin-owned sites as plugin surfaces', () => {
+    const meta = buildStudioCommandMeta(makeCommand({
+      site: 'hot-digest',
+      name: 'hot',
+      strategy: Strategy.PUBLIC,
+      browser: false,
+    }), {
+      pluginSites: new Set(['hot-digest']),
+    });
+
+    expect(meta.surface).toBe('plugin');
+  });
 });
 
 describe('buildStudioRegistry', () => {

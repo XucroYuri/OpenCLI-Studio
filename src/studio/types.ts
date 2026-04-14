@@ -141,3 +141,29 @@ export interface StudioJobEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+export type StudioPluginSourceKind = 'git' | 'local' | 'unknown';
+
+export interface StudioPluginEntry {
+  name: string;
+  path: string;
+  commands: string[];
+  declaredCommandCount: number;
+  registeredCommandCount: number;
+  source: string | null;
+  sourceKind: StudioPluginSourceKind;
+  version: string | null;
+  installedAt: string | null;
+  monorepoName: string | null;
+  description: string | null;
+}
+
+export interface StudioExternalCliEntry {
+  name: string;
+  binary: string;
+  description: string | null;
+  homepage: string | null;
+  tags: string[];
+  installed: boolean;
+  installAvailable: boolean;
+}

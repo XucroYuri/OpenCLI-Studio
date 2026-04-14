@@ -14,6 +14,7 @@ describe('registry preset state helpers', () => {
     const filters: RegistryFilters = {
       search: 'trends',
       site: 'google',
+      surface: 'plugin',
       mode: 'public',
       capability: 'search',
       risk: 'safe',

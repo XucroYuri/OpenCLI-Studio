@@ -9,6 +9,10 @@ import type {
   StudioRisk,
 } from './types.js';
 
+export interface StudioMetadataOptions {
+  pluginSites?: Set<string>;
+}
+
 const DISCOVERY_NAMES = new Set([
   'hot', 'top', 'trending', 'popular', 'ranking', 'news', 'explore', 'frontpage',
   'best', 'latest', 'today', 'gainers', 'losers', 'movers-shakers', 'top-sellers',
@@ -73,13 +77,14 @@ function inferRisk(capability: StudioCapability, name: string): StudioRisk {
   return 'safe';
 }
 
-export function buildStudioCommandMeta(cmd: CliCommand): StudioCommandMeta {
+export function buildStudioCommandMeta(cmd: CliCommand, options: StudioMetadataOptions = {}): StudioCommandMeta {
   const capability = inferCapability(cmd.name);
   const mode = inferMode(cmd);
   const risk = inferRisk(capability, cmd.name);
+  const surface = options.pluginSites?.has(cmd.site) ? 'plugin' : 'builtin';
 
   return {
-    surface: 'builtin',
+    surface,
     mode,
     capability,
     risk,
@@ -92,7 +97,7 @@ export function buildStudioCommandMeta(cmd: CliCommand): StudioCommandMeta {
   };
 }
 
-function toStudioRegistryCommand(cmd: CliCommand): StudioRegistryCommand {
+function toStudioRegistryCommand(cmd: CliCommand, options: StudioMetadataOptions): StudioRegistryCommand {
   const strategy = (cmd.strategy ?? (cmd.browser === false ? Strategy.PUBLIC : Strategy.COOKIE)).toString();
   return {
     command: fullName(cmd),
@@ -102,13 +107,13 @@ function toStudioRegistryCommand(cmd: CliCommand): StudioRegistryCommand {
     args: cmd.args,
     browser: !!cmd.browser,
     strategy,
-    meta: buildStudioCommandMeta(cmd),
+    meta: buildStudioCommandMeta(cmd, options),
   };
 }
 
-export function buildStudioRegistry(commands: CliCommand[]): StudioRegistryPayload {
+export function buildStudioRegistry(commands: CliCommand[], options: StudioMetadataOptions = {}): StudioRegistryPayload {
   const normalized = commands
-    .map(toStudioRegistryCommand)
+    .map((command) => toStudioRegistryCommand(command, options))
     .sort((a, b) => a.command.localeCompare(b.command));
 
   const sitesMap = new Map<string, number>();

@@ -1,3 +1,4 @@
+export type StudioSurface = 'builtin' | 'plugin' | 'external';
 export type StudioMode = 'public' | 'browser' | 'desktop' | 'external';
 export type StudioCapability = 'discovery' | 'search' | 'detail' | 'account' | 'action' | 'asset' | 'tooling' | 'other';
 export type StudioRisk = 'safe' | 'confirm' | 'dangerous';
@@ -12,6 +13,7 @@ export interface StudioCommandArg {
 }
 
 export interface StudioCommandMeta {
+  surface: StudioSurface;
   mode: StudioMode;
   capability: StudioCapability;
   risk: StudioRisk;
@@ -119,11 +121,58 @@ export interface StudioEnv {
   storageDir: string;
   commandCount: number;
   browserCommandCount: number;
+  pluginCount: number;
+  externalCliCount: number;
   platform: string;
   nodeVersion: string;
 }
 
-export type StudioDoctorResult = Record<string, unknown>;
+export interface StudioPluginEntry {
+  name: string;
+  path: string;
+  commands: string[];
+  declaredCommandCount: number;
+  registeredCommandCount: number;
+  source: string | null;
+  sourceKind: 'git' | 'local' | 'unknown';
+  version: string | null;
+  installedAt: string | null;
+  monorepoName: string | null;
+  description: string | null;
+}
+
+export interface StudioExternalCliEntry {
+  name: string;
+  binary: string;
+  description: string | null;
+  homepage: string | null;
+  tags: string[];
+  installed: boolean;
+  installAvailable: boolean;
+}
+
+export interface StudioDoctorResult {
+  cliVersion?: string;
+  daemonRunning?: boolean;
+  daemonFlaky?: boolean;
+  extensionConnected?: boolean;
+  extensionFlaky?: boolean;
+  extensionVersion?: string;
+  latestExtensionVersion?: string;
+  connectivity?: {
+    ok: boolean;
+    error?: string;
+    durationMs: number;
+  };
+  sessions?: Array<{
+    workspace: string;
+    windowId: number;
+    tabCount: number;
+    idleMsRemaining: number;
+  }>;
+  issues: string[];
+  [key: string]: unknown;
+}
 
 export interface ExecuteResponse {
   command: string;

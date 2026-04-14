@@ -13,6 +13,7 @@ describe('parseRegistryQuery', () => {
     expect(parseRegistryQuery({
       q: 'trend',
       site: 'google',
+      surface: 'plugin',
       mode: 'public',
       capability: 'discovery',
       risk: 'safe',
@@ -21,6 +22,7 @@ describe('parseRegistryQuery', () => {
     })).toEqual({
       search: 'trend',
       site: 'google',
+      surface: 'plugin',
       mode: 'public',
       capability: 'discovery',
       risk: 'safe',
@@ -35,6 +37,7 @@ describe('buildRegistryQuery', () => {
     expect(buildRegistryQuery({
       search: 'trend',
       site: 'google',
+      surface: 'plugin',
       mode: 'public',
       capability: 'all',
       risk: 'all',
@@ -43,6 +46,7 @@ describe('buildRegistryQuery', () => {
     })).toEqual({
       q: 'trend',
       site: 'google',
+      surface: 'plugin',
       mode: 'public',
       charts: '1',
       advanced: '1',

@@ -332,6 +332,87 @@ describe('startStudioServer', () => {
     expect(deleteJobResponse.status).toBe(200);
   });
 
+  it('exposes ops inventory and supports live doctor options', async () => {
+    const doctor = vi.fn(async () => ({
+      daemonRunning: true,
+      extensionConnected: true,
+      sessions: [{ workspace: 'C:/repo', windowId: 3, tabCount: 2, idleMsRemaining: 120_000 }],
+      issues: [],
+    }));
+
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'hot-digest',
+          name: 'hot',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      plugins: [
+        {
+          name: 'hot-digest',
+          path: path.join(tempDir, 'plugins', 'hot-digest'),
+          commands: ['hot'],
+          source: 'github:example/opencli-plugin-hot-digest',
+          description: 'Digest plugin',
+          version: '1.0.0',
+          installedAt: '2026-04-14T00:00:00.000Z',
+        },
+      ],
+      externalClis: [
+        {
+          name: 'gh',
+          binary: 'gh',
+          description: 'GitHub CLI',
+          installed: true,
+          installAvailable: true,
+          tags: ['git', 'github'],
+          homepage: 'https://cli.github.com',
+        },
+      ],
+      execute: vi.fn(),
+      doctor,
+    });
+
+    const pluginsResponse = await fetch(`${server.url}/api/plugins`);
+    const plugins = await pluginsResponse.json() as {
+      entries: Array<{ name: string; registeredCommandCount: number; sourceKind: string }>;
+    };
+    expect(plugins.entries).toMatchObject([
+      {
+        name: 'hot-digest',
+        registeredCommandCount: 1,
+        sourceKind: 'git',
+      },
+    ]);
+
+    const externalResponse = await fetch(`${server.url}/api/external`);
+    const external = await externalResponse.json() as {
+      entries: Array<{ name: string; installed: boolean }>;
+    };
+    expect(external.entries).toMatchObject([
+      {
+        name: 'gh',
+        installed: true,
+      },
+    ]);
+
+    const doctorResponse = await fetch(`${server.url}/api/doctor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ live: true, sessions: true }),
+    });
+    const doctorResult = await doctorResponse.json() as {
+      sessions: Array<{ workspace: string }>;
+    };
+
+    expect(doctor).toHaveBeenCalledWith({ live: true, sessions: true });
+    expect(doctorResult.sessions).toMatchObject([{ workspace: 'C:/repo' }]);
+  });
+
   it('serves static assets and falls back to index.html for the app shell', async () => {
     const staticDir = path.join(tempDir, 'static');
     await fs.mkdir(path.join(staticDir, 'assets'), { recursive: true });

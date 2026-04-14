@@ -1,8 +1,9 @@
-import type { StudioCapability, StudioCommandItem, StudioMode, StudioRisk } from '../types';
+import type { StudioCapability, StudioCommandItem, StudioMode, StudioRisk, StudioSurface } from '../types';
 
 export interface RegistryFilters {
   search: string;
   site: string;
+  surface: StudioSurface | 'all';
   mode: StudioMode | 'all';
   capability: StudioCapability | 'all';
   risk: StudioRisk | 'all';
@@ -39,6 +40,7 @@ export function filterRegistryCommands(
     }
 
     if (filters.site !== 'all' && command.site !== filters.site) return false;
+    if (filters.surface !== 'all' && command.meta.surface !== filters.surface) return false;
     if (filters.mode !== 'all' && command.meta.mode !== filters.mode) return false;
     if (filters.capability !== 'all' && command.meta.capability !== filters.capability) return false;
     if (filters.risk !== 'all' && command.meta.risk !== filters.risk) return false;

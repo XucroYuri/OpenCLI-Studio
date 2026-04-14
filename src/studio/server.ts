@@ -4,13 +4,22 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { executeCommand } from '../execution.js';
+import { isBinaryInstalled, loadExternalClis } from '../external.js';
+import { listPlugins, type PluginInfo } from '../plugin.js';
 import { getRegistry, type CliCommand } from '../registry.js';
 import { PKG_VERSION } from '../version.js';
 import { buildStudioRegistry } from './metadata.js';
+import { buildStudioExternalInventory, buildStudioPluginInventory } from './ops.js';
 import { listStudioRecipes } from './recipes.js';
 import { StudioJobScheduler } from './scheduler.js';
 import { StudioStore } from './store.js';
-import type { StudioFavoriteKind, StudioPresetKind, StudioSnapshotSourceKind } from './types.js';
+import type {
+  StudioExternalCliEntry,
+  StudioFavoriteKind,
+  StudioPluginEntry,
+  StudioPresetKind,
+  StudioSnapshotSourceKind,
+} from './types.js';
 
 export type StudioDoctorResult = Record<string, unknown>;
 
@@ -20,8 +29,10 @@ export interface StartStudioServerOptions {
   storageDir?: string;
   staticDir?: string;
   commands?: CliCommand[];
+  plugins?: PluginInfo[] | StudioPluginEntry[];
+  externalClis?: StudioExternalCliEntry[];
   execute?: (command: CliCommand, args: Record<string, unknown>) => Promise<unknown>;
-  doctor?: () => Promise<StudioDoctorResult>;
+  doctor?: (options?: { live?: boolean; sessions?: boolean }) => Promise<StudioDoctorResult>;
 }
 
 export interface StudioServerHandle {
@@ -65,6 +76,11 @@ interface JobRequestBody {
   args: Record<string, unknown>;
   intervalMinutes: number;
   enabled: boolean;
+}
+
+interface DoctorRequestBody {
+  live?: boolean;
+  sessions?: boolean;
 }
 
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -136,12 +152,19 @@ function renderFallbackShell(): string {
 </html>`;
 }
 
-async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
+async function readJsonBody<T>(req: IncomingMessage, fallback?: T): Promise<T> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(Buffer.from(chunk));
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf-8')) as T;
+  if (chunks.length === 0) {
+    return (fallback ?? {}) as T;
+  }
+  const body = Buffer.concat(chunks).toString('utf-8').trim();
+  if (!body) {
+    return (fallback ?? {}) as T;
+  }
+  return JSON.parse(body) as T;
 }
 
 function createCommandMap(commands: CliCommand[]): Map<string, CliCommand> {
@@ -202,12 +225,28 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
   const staticDir = options.staticDir;
   const commands = options.commands ?? [...new Set(getRegistry().values())];
   const execute = options.execute ?? (async (command: CliCommand, args: Record<string, unknown>) => executeCommand(command, args));
-  const doctor = options.doctor ?? (async () => {
+  const doctor = options.doctor ?? (async (doctorOptions?: { live?: boolean; sessions?: boolean }) => {
     const { runBrowserDoctor } = await import('../doctor.js');
-    return runBrowserDoctor({ live: false, sessions: false, cliVersion: PKG_VERSION }) as Promise<StudioDoctorResult>;
+    return runBrowserDoctor({
+      live: doctorOptions?.live ?? false,
+      sessions: doctorOptions?.sessions ?? false,
+      cliVersion: PKG_VERSION,
+    }) as Promise<StudioDoctorResult>;
   });
   const store = new StudioStore(storageDir);
-  const registry = buildStudioRegistry(commands);
+  const rawPlugins = Array.isArray(options.plugins) && options.plugins.length > 0 && 'declaredCommandCount' in options.plugins[0]
+    ? null
+    : ((options.plugins as PluginInfo[] | undefined) ?? listPlugins());
+  const pluginNames = new Set(
+    rawPlugins
+      ? rawPlugins.map((plugin) => plugin.name)
+      : (options.plugins as StudioPluginEntry[] | undefined ?? []).map((plugin) => plugin.name),
+  );
+  const registry = buildStudioRegistry(commands, { pluginSites: pluginNames });
+  const plugins = rawPlugins
+    ? buildStudioPluginInventory(rawPlugins, registry)
+    : ((options.plugins as StudioPluginEntry[] | undefined) ?? []);
+  const externalClis = options.externalClis ?? buildStudioExternalInventory(loadExternalClis(), isBinaryInstalled);
   const commandMap = createCommandMap(commands);
   const recipes = listStudioRecipes(commands);
   const recipeMap = new Map(recipes.map((recipe) => [recipe.id, recipe]));
@@ -308,6 +347,16 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
 
       if (method === 'GET' && pathname === '/api/history') {
         json(res, 200, { entries: store.listHistory() });
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/plugins') {
+        json(res, 200, { entries: plugins });
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/external') {
+        json(res, 200, { entries: externalClis });
         return;
       }
 
@@ -416,6 +465,8 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
           storageDir,
           commandCount: registry.commands.length,
           browserCommandCount,
+          pluginCount: plugins.length,
+          externalCliCount: externalClis.length,
           platform: process.platform,
           nodeVersion: process.version,
         });
@@ -423,7 +474,8 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       }
 
       if (method === 'POST' && pathname === '/api/doctor') {
-        const result = await doctor();
+        const body = await readJsonBody<DoctorRequestBody>(req, {} as DoctorRequestBody);
+        const result = await doctor({ live: body.live ?? false, sessions: body.sessions ?? false });
         json(res, 200, result);
         return;
       }

@@ -15,6 +15,7 @@ export function parseRegistryQuery(query: QueryRecord): RegistryFilters {
   return {
     search: readString(query, 'q', ''),
     site: readString(query, 'site', 'all'),
+    surface: readString(query, 'surface', 'all') as RegistryFilters['surface'],
     mode: readString(query, 'mode', 'all') as RegistryFilters['mode'],
     capability: readString(query, 'capability', 'all') as RegistryFilters['capability'],
     risk: readString(query, 'risk', 'all') as RegistryFilters['risk'],
@@ -28,6 +29,7 @@ export function buildRegistryQuery(state: RegistryFilters): Record<string, strin
 
   if (state.search) query.q = state.search;
   if (state.site !== 'all') query.site = state.site;
+  if (state.surface !== 'all') query.surface = state.surface;
   if (state.mode !== 'all') query.mode = state.mode;
   if (state.capability !== 'all') query.capability = state.capability;
   if (state.risk !== 'all') query.risk = state.risk;
