@@ -22,6 +22,7 @@ if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
 
 const search = ref(initialFilters.search);
 const site = ref(initialFilters.site);
+const surface = ref<RegistryFilters['surface']>(initialFilters.surface);
 const mode = ref<RegistryFilters['mode']>(initialFilters.mode);
 const capability = ref<RegistryFilters['capability']>(initialFilters.capability);
 const risk = ref<RegistryFilters['risk']>(initialFilters.risk);
@@ -30,6 +31,7 @@ const supportsChartsOnly = ref(initialFilters.supportsChartsOnly);
 const currentFilters = computed<RegistryFilters>(() => ({
   search: search.value,
   site: site.value,
+  surface: surface.value,
   mode: mode.value,
   capability: capability.value,
   risk: risk.value,
@@ -44,6 +46,13 @@ const siteOptions = computed(() => [
   { label: 'All sites', value: 'all' },
   ...store.registry.sites.map((item) => ({ label: `${item.site} (${item.commandCount})`, value: item.site })),
 ]);
+
+const surfaceOptions = [
+  { label: 'All surfaces', value: 'all' },
+  { label: 'Built-in', value: 'builtin' },
+  { label: 'Plugin', value: 'plugin' },
+  { label: 'External', value: 'external' },
+];
 
 const modeOptions = [
   { label: 'All modes', value: 'all' },
@@ -104,6 +113,7 @@ function applyRegistryPreset(preset: StudioPresetEntry): void {
   store.setAdvancedMode(state.advancedMode);
   search.value = state.search;
   site.value = state.site;
+  surface.value = state.surface;
   mode.value = state.mode;
   capability.value = state.capability;
   risk.value = state.risk;
@@ -123,6 +133,7 @@ watch(() => route.query, (query) => {
 
   search.value = nextFilters.search;
   site.value = nextFilters.site;
+  surface.value = nextFilters.surface;
   mode.value = nextFilters.mode;
   capability.value = nextFilters.capability;
   risk.value = nextFilters.risk;
@@ -149,6 +160,7 @@ watch(currentFilters, (nextFilters) => {
       <div class="filter-bar">
         <n-input v-model:value="search" placeholder="Search by command, site, or description" clearable />
         <n-select v-model:value="site" :options="siteOptions" />
+        <n-select v-model:value="surface" :options="surfaceOptions" />
         <n-select v-model:value="mode" :options="modeOptions" />
         <n-select v-model:value="capability" :options="capabilityOptions" />
         <n-select v-model:value="risk" :options="riskOptions" />
@@ -168,7 +180,7 @@ watch(currentFilters, (nextFilters) => {
             button-label="Save View"
             title="Save Registry View"
             description="Persist the current filter combination so you can reopen this slice of the registry later."
-            :default-name="search ? `Registry · ${search}` : 'Registry View'"
+            :default-name="search ? `Registry ${search}` : 'Registry View'"
             :default-description="site !== 'all' ? `Filtered to ${site}` : ''"
             :save="saveView"
           />
@@ -204,6 +216,7 @@ watch(currentFilters, (nextFilters) => {
         <p>{{ command.description || 'No description available.' }}</p>
         <div class="chip-cloud">
           <span class="chip chip--small">{{ command.meta.mode }}</span>
+          <span class="chip chip--small">{{ command.meta.surface }}</span>
           <span class="chip chip--small">{{ command.meta.capability }}</span>
           <span class="chip chip--small">{{ command.strategy }}</span>
           <span v-if="command.meta.uiHints.supportsCharts" class="chip chip--small">chartable</span>

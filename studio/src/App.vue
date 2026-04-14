@@ -13,6 +13,7 @@ const navigation = [
   { to: '/registry', label: 'Registry' },
   { to: '/workbench', label: 'Workbench' },
   { to: '/insights', label: 'Insights' },
+  { to: '/ops', label: 'Ops' },
 ];
 
 const pageTitle = computed(() => String(route.meta.title ?? 'OpenCLI Studio'));
@@ -103,6 +104,14 @@ onMounted(() => {
             <div class="nav-status__row">
               <span>Recipes</span>
               <strong>{{ store.recipes.length }}</strong>
+            </div>
+            <div class="nav-status__row">
+              <span>Plugins</span>
+              <strong>{{ store.plugins.length }}</strong>
+            </div>
+            <div class="nav-status__row">
+              <span>External CLIs</span>
+              <strong>{{ store.externalClis.length }}</strong>
             </div>
           </div>
         </aside>

@@ -474,6 +474,111 @@ a {
   justify-content: flex-end;
 }
 
+.ops-status-grid,
+.inventory-list,
+.inventory-notes,
+.issue-list {
+  display: grid;
+  gap: 14px;
+}
+
+.ops-status-grid,
+.inventory-notes {
+  margin-top: 18px;
+}
+
+.ops-status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.inventory-item,
+.issue-item {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(139, 163, 173, 0.12);
+}
+
+.inventory-item {
+  display: grid;
+  gap: 16px;
+}
+
+.inventory-item__header,
+.inventory-item__meta {
+  display: flex;
+  gap: 12px;
+}
+
+.inventory-item__header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.inventory-item__header strong,
+.issue-item strong {
+  display: block;
+  font-size: 18px;
+  color: #f7f3eb;
+}
+
+.inventory-item__header p,
+.issue-item span {
+  margin: 8px 0 0;
+  color: #9db0b8;
+  line-height: 1.55;
+}
+
+.inventory-item__meta {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.inventory-notes {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.inventory-note {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(139, 163, 173, 0.1);
+}
+
+.inventory-note span {
+  display: block;
+  color: #95aab2;
+  font-size: 12px;
+}
+
+.inventory-note strong {
+  display: block;
+  margin-top: 8px;
+  color: #f7f3eb;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.inventory-note--wide {
+  grid-column: span 2;
+}
+
+.inventory-link {
+  color: #f3d8bc;
+  text-decoration: underline;
+  text-decoration-color: rgba(242, 140, 40, 0.35);
+  text-underline-offset: 3px;
+}
+
+.inventory-link:hover {
+  color: #ffd8af;
+}
+
+.issue-item {
+  display: grid;
+  gap: 8px;
+}
+
 .preset-modal {
   max-width: 640px;
 }
@@ -534,13 +639,16 @@ a {
   .result-panel__summary,
   .preset-item__header,
   .preset-item__meta,
-  .preset-item__actions {
+  .preset-item__actions,
+  .inventory-item__header,
+  .inventory-item__meta {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .metrics-grid,
-  .kv-grid {
+  .kv-grid,
+  .inventory-notes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -557,7 +665,9 @@ a {
   }
 
   .metrics-grid,
-  .kv-grid {
+  .kv-grid,
+  .inventory-notes,
+  .ops-status-grid {
     grid-template-columns: 1fr;
   }
 
@@ -567,5 +677,9 @@ a {
 
   .topbar__meta {
     justify-content: flex-start;
+  }
+
+  .inventory-note--wide {
+    grid-column: auto;
   }
 }

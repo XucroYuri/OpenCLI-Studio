@@ -39,5 +39,14 @@ export const router = createRouter({
         description: 'Opinionated recipe pages for hot topics, trends, and topic monitoring.',
       },
     },
+    {
+      path: '/ops',
+      name: 'ops',
+      component: () => import('./views/OpsView.vue'),
+      meta: {
+        title: 'Ops',
+        description: 'Doctor, plugin inventory, external CLI status, and local bridge operations.',
+      },
+    },
   ],
 });
