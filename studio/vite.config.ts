@@ -7,12 +7,5 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '..', 'dist', 'studio'),
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          echarts: ['echarts'],
-        },
-      },
-    },
   },
 });
