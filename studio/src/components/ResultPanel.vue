@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, defineAsyncComponent } from 'vue';
 import { NCard, NDataTable, NEmpty, NTabPane, NTabs, NTag } from 'naive-ui';
-import ChartPanel from './ChartPanel.vue';
 import { buildResultPresentation } from '../lib/results';
+
+const ChartPanel = defineAsyncComponent(() => import('./ChartPanel.vue'));
 
 const props = withDefaults(defineProps<{
   result?: unknown;
