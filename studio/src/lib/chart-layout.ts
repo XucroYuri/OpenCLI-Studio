@@ -42,7 +42,7 @@ export interface SvgChartLayout {
   series: ChartSeries[];
 }
 
-const COLORS = ['#f28c28', '#2ea7a0', '#e55812'];
+const COLORS = ['#3b82f6', '#06b6d4', '#818cf8'];
 
 function clampNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;

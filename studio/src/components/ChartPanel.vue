@@ -108,3 +108,29 @@ const layout = computed(() => buildSvgChartLayout(props.model, { width, height }
     </svg>
   </div>
 </template>
+
+<style scoped>
+.chart-panel {
+  margin-top: 8px;
+}
+.chart-panel__svg {
+  width: 100%;
+  height: auto;
+}
+.chart-panel__grid {
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 1;
+}
+.chart-panel__tick {
+  fill: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+}
+.chart-panel__label {
+  fill: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+}
+.chart-panel__legend {
+  fill: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+</style>
