@@ -1,20 +1,27 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NTag } from 'naive-ui';
 import ResultPanel from '../components/ResultPanel.vue';
 import { pickDefaultWorkbenchCommand } from '../lib/registry';
+import { buildWorkbenchQuery, parseWorkbenchQuery } from '../lib/routes';
 import { useStudioStore } from '../stores/studio';
-import type { StudioCommandArg } from '../types';
+import type { StudioCommandArg, StudioHistoryEntry } from '../types';
 
 const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
 
 const formModel = reactive<Record<string, any>>({});
+const pendingHistoryArgs = ref<Record<string, unknown> | null>(null);
+
+const initialWorkbenchState = parseWorkbenchQuery(route.query);
+if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
+  store.setAdvancedMode(initialWorkbenchState.advancedMode);
+}
 
 const commandOptions = computed(() =>
-  store.registry.commands.map((command) => ({
+  store.availableWorkbenchCommands.map((command) => ({
     label: command.command,
     value: command.command,
   })),
@@ -22,18 +29,17 @@ const commandOptions = computed(() =>
 
 const selectedCommandName = computed({
   get: () => {
-    if (typeof route.query.command === 'string' && route.query.command) {
-      return route.query.command;
-    }
-    return store.selectedCommand || pickDefaultWorkbenchCommand(store.registry.commands);
+    const routeState = parseWorkbenchQuery(route.query);
+    const preferredCommand = routeState.command || store.selectedCommand;
+    return pickDefaultWorkbenchCommand(store.registry.commands, preferredCommand, store.advancedMode);
   },
   set: (value: string) => {
     store.setSelectedCommand(value);
     void router.replace({
-      query: {
-        ...route.query,
+      query: buildWorkbenchQuery({
         command: value,
-      },
+        advancedMode: store.advancedMode,
+      }),
     });
   },
 });
@@ -87,9 +93,57 @@ function resetForm(commandName: string | null): void {
   }
 }
 
+function applyArgsToForm(args: Record<string, unknown>): void {
+  if (!command.value) return;
+
+  for (const arg of command.value.args) {
+    if (Object.prototype.hasOwnProperty.call(args, arg.name)) {
+      formModel[arg.name] = normalizeInputValue(args[arg.name]);
+    }
+  }
+}
+
 watch(command, (nextCommand) => {
   resetForm(nextCommand?.command ?? null);
+  if (pendingHistoryArgs.value) {
+    applyArgsToForm(pendingHistoryArgs.value);
+    pendingHistoryArgs.value = null;
+  }
 }, { immediate: true });
+
+watch(() => route.query, (query) => {
+  const nextState = parseWorkbenchQuery(query);
+  if (Object.prototype.hasOwnProperty.call(query, 'advanced')) {
+    store.setAdvancedMode(nextState.advancedMode);
+  }
+
+  const nextCommand = pickDefaultWorkbenchCommand(
+    store.registry.commands,
+    nextState.command || store.selectedCommand,
+    store.advancedMode,
+  );
+
+  if (nextCommand && nextCommand !== store.selectedCommand) {
+    store.setSelectedCommand(nextCommand);
+  }
+});
+
+watch(() => store.advancedMode, (advancedMode) => {
+  const nextCommand = pickDefaultWorkbenchCommand(
+    store.registry.commands,
+    selectedCommandName.value,
+    advancedMode,
+  );
+
+  const nextQuery = buildWorkbenchQuery({
+    command: nextCommand,
+    advancedMode,
+  });
+
+  if (JSON.stringify(route.query) !== JSON.stringify(nextQuery)) {
+    void router.replace({ query: nextQuery });
+  }
+});
 
 const cliPreview = computed(() => {
   if (!command.value) return 'opencli';
@@ -140,6 +194,16 @@ async function handleRun(): Promise<void> {
 function selectCommand(commandName: string): void {
   selectedCommandName.value = commandName;
 }
+
+function reuseHistoryEntry(entry: StudioHistoryEntry): void {
+  pendingHistoryArgs.value = entry.args;
+  if (selectedCommandName.value !== entry.command) {
+    selectedCommandName.value = entry.command;
+    return;
+  }
+  applyArgsToForm(entry.args);
+  pendingHistoryArgs.value = null;
+}
 </script>
 
 <template>
@@ -147,6 +211,7 @@ function selectCommand(commandName: string): void {
     <div class="workbench-column">
       <n-card title="Command Selection" class="glass-card">
         <n-select v-model:value="selectedCommandName" :options="commandOptions" filterable />
+        <div v-if="!store.advancedMode" class="panel-note">Advanced mode is off, so confirm/dangerous commands are hidden from the picker.</div>
         <div v-if="command" class="command-inspector">
           <div class="chip-cloud">
             <n-tag size="small" type="info">{{ command.meta.mode }}</n-tag>
@@ -162,16 +227,17 @@ function selectCommand(commandName: string): void {
 
       <n-card title="Recent Runs" class="glass-card">
         <div v-if="recentRuns.length" class="stack-list">
-          <button v-for="entry in recentRuns" :key="entry.id" class="stack-row" @click="selectCommand(entry.command)">
-            <div>
+          <div v-for="entry in recentRuns" :key="entry.id" class="stack-row">
+            <button class="stack-row__primary" @click="selectCommand(entry.command)">
               <strong>{{ entry.command }}</strong>
               <span>{{ entry.startedAt }}</span>
-            </div>
+            </button>
             <div class="stack-row__meta">
+              <n-button size="small" quaternary @click.stop="reuseHistoryEntry(entry)">Reuse Args</n-button>
               <n-tag :type="entry.status === 'success' ? 'success' : 'error'" size="small">{{ entry.status }}</n-tag>
               <span>{{ entry.durationMs }} ms</span>
             </div>
-          </button>
+          </div>
         </div>
         <div v-else class="panel-note">No stored history for this command yet.</div>
       </n-card>

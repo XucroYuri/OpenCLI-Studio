@@ -82,6 +82,18 @@ async function runRecipe(): Promise<void> {
   if (!recipe.value) return;
   await store.runRecipe(recipe.value.id, normalizedArgs());
 }
+
+function openInWorkbench(): void {
+  if (!recipe.value) return;
+  store.setSelectedCommand(recipe.value.command);
+  void router.push({
+    name: 'workbench',
+    query: {
+      command: recipe.value.command,
+      ...(store.advancedMode ? { advanced: '1' } : {}),
+    },
+  });
+}
 </script>
 
 <template>
@@ -138,6 +150,7 @@ async function runRecipe(): Promise<void> {
 
           <div class="card-actions">
             <n-button type="primary" :loading="store.runningCommand" @click="runRecipe()">Run Recipe</n-button>
+            <n-button tertiary @click="openInWorkbench()">Open in Workbench</n-button>
             <n-button tertiary @click="resetRecipeModel()">Reset Defaults</n-button>
           </div>
         </template>
