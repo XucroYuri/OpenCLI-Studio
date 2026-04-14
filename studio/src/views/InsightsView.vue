@@ -185,8 +185,9 @@ watch(currentSnapshots, (snapshots) => {
     leftSnapshotId.value = snapshots[0]?.id ?? null;
   }
 
-  if (!snapshots.some((snapshot) => snapshot.id === rightSnapshotId.value)) {
-    rightSnapshotId.value = snapshots[1]?.id ?? snapshots[0]?.id ?? null;
+  if (!snapshots.some((snapshot) => snapshot.id === rightSnapshotId.value) || rightSnapshotId.value === leftSnapshotId.value) {
+    const candidate = snapshots.find((s) => s.id !== leftSnapshotId.value);
+    rightSnapshotId.value = candidate?.id ?? null;
   }
 }, { immediate: true });
 

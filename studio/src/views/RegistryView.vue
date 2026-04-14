@@ -611,7 +611,7 @@ watch(currentFilters, (nextFilters) => {
           <div class="site-card__info">
             <div class="site-card__name">
               {{ store.getSiteDisplayName(group.site, locale) }}
-              <span v-if="!group.domestic" class="site-card__intl-tag">{{ locale === 'zh-CN' ? '国际' : 'Intl' }}</span>
+              <span v-if="!group.domestic" class="site-card__intl-tag">{{ t('registry.market.international') }}</span>
             </div>
             <div class="site-card__category">{{ store.getCategoryLabel(group.category, locale) }}</div>
           </div>
@@ -646,7 +646,7 @@ watch(currentFilters, (nextFilters) => {
           {{ store.getCategoryIcon(expandedSite.category) }}
           {{ store.getCategoryLabel(expandedSite.category, locale) }}
           · {{ t('registry.cmdCount', { count: expandedSite.count }) }}
-          <span v-if="!expandedSite.domestic" class="site-card__intl-tag" style="margin-left:8px;">{{ locale === 'zh-CN' ? '国际' : 'Intl' }}</span>
+          <span v-if="!expandedSite.domestic" class="site-card__intl-tag" style="margin-left:8px;">{{ t('registry.market.international') }}</span>
         </div>
         <div class="stack-list">
           <div

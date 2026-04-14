@@ -91,7 +91,6 @@ export function buildRegistryCatalog(
   const siteValues = new Map<string, number>();
   const surfaceValues = new Map<string, number>();
   const categoryValues = new Map<string, number>();
-  const modeValues = new Map<string, number>();
   const capabilityValues = new Map<string, number>();
   const purposeValues = new Map<string, number>();
   const riskValues = new Map<string, number>();
@@ -105,7 +104,6 @@ export function buildRegistryCatalog(
     siteValues.set(command.site, (siteValues.get(command.site) ?? 0) + 1);
     categoryValues.set(siteCategory, (categoryValues.get(siteCategory) ?? 0) + 1);
     surfaceValues.set(command.meta.surface, (surfaceValues.get(command.meta.surface) ?? 0) + 1);
-    modeValues.set(command.meta.mode, (modeValues.get(command.meta.mode) ?? 0) + 1);
     capabilityValues.set(command.meta.capability, (capabilityValues.get(command.meta.capability) ?? 0) + 1);
     purposeValues.set(purpose, (purposeValues.get(purpose) ?? 0) + 1);
     riskValues.set(command.meta.risk, (riskValues.get(command.meta.risk) ?? 0) + 1);

@@ -44,7 +44,7 @@ export interface StudioRegistryPayload {
     site: string;
     commandCount: number;
     market?: 'domestic' | 'international' | 'unknown';
-    category?: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
+    category?: 'social' | 'news' | 'finance' | 'ecommerce' | 'academic' | 'tools' | 'other';
     commandCountByTag?: Record<string, number>;
   }>;
 }

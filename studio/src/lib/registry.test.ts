@@ -145,6 +145,10 @@ describe('filterRegistryCommands', () => {
   });
 
   it('filters commands by market and site category', () => {
+    // 模拟前端分类解析（与 store.getSiteCategory 同源逻辑）
+    const resolveSiteCategory = (site: string) =>
+      ({ bilibili: 'ecommerce', google: 'news', douyin: 'ecommerce' })[site] ?? 'other';
+
     const marketFiltered = filterRegistryCommands(COMMANDS, {
       search: '',
       site: 'all',
@@ -171,7 +175,7 @@ describe('filterRegistryCommands', () => {
       risk: 'all',
       supportsChartsOnly: false,
       advancedMode: true,
-    });
+    }, resolveSiteCategory);
 
     expect(marketFiltered.map((item) => item.command)).toEqual(['bilibili/hot', 'douyin/publish']);
     expect(categoryFiltered.map((item) => item.command)).toEqual(['google/trends']);

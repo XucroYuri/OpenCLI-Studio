@@ -243,7 +243,7 @@ function capabilityLabel(value: string): string {
             <div class="site-card__info">
               <div class="site-card__name">
                 {{ store.getSiteDisplayName(group.site, locale) }}
-                <span v-if="!group.domestic" class="site-card__intl-tag">{{ locale === 'zh-CN' ? '国际' : 'Intl' }}</span>
+                <span v-if="!group.domestic" class="site-card__intl-tag">{{ t('registry.market.international') }}</span>
               </div>
               <div class="site-card__category">{{ t('registry.cmdCount', { count: group.count }) }}</div>
             </div>

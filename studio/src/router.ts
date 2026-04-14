@@ -61,5 +61,10 @@ export const router = createRouter({
         descriptionKey: 'routes.ops.description',
       },
     },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      redirect: '/',
+    },
   ],
 });

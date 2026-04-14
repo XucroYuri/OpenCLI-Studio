@@ -1539,12 +1539,6 @@ ol.issue-list .issue-item {
   transform: translateY(-1px);
 }
 
-.category-chip {
-  background: rgba(37, 99, 235, 0.1) !important;
-  border-color: rgba(37, 99, 235, 0.25) !important;
-  color: #60a5fa !important;
-}
-
 .command-site-group__label {
   display: flex;
   align-items: center;
