@@ -57,3 +57,24 @@ export function buildWorkbenchQuery(state: WorkbenchQueryState): Record<string, 
 
   return query;
 }
+
+export interface InsightQueryState {
+  recipeId: string;
+  advancedMode: boolean;
+}
+
+export function parseInsightQuery(query: QueryRecord): InsightQueryState {
+  return {
+    recipeId: readString(query, 'recipe', ''),
+    advancedMode: readBoolean(query, 'advanced'),
+  };
+}
+
+export function buildInsightQuery(state: InsightQueryState): Record<string, string> {
+  const query: Record<string, string> = {};
+
+  if (state.recipeId) query.recipe = state.recipeId;
+  if (state.advancedMode) query.advanced = '1';
+
+  return query;
+}

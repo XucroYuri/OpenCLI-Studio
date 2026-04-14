@@ -9,6 +9,7 @@ import { PKG_VERSION } from '../version.js';
 import { buildStudioRegistry } from './metadata.js';
 import { listStudioRecipes } from './recipes.js';
 import { StudioStore } from './store.js';
+import type { StudioFavoriteKind, StudioPresetKind } from './types.js';
 
 export type StudioDoctorResult = Record<string, unknown>;
 
@@ -30,6 +31,20 @@ export interface StudioServerHandle {
 interface ExecuteRequestBody {
   command: string;
   args?: Record<string, unknown>;
+}
+
+interface FavoriteRequestBody {
+  kind: StudioFavoriteKind;
+  targetId: string;
+  favorite: boolean;
+}
+
+interface PresetRequestBody {
+  id?: number;
+  kind: StudioPresetKind;
+  name: string;
+  description?: string | null;
+  state: Record<string, unknown>;
 }
 
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -199,6 +214,41 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
 
       if (method === 'GET' && pathname === '/api/history') {
         json(res, 200, { entries: store.listHistory() });
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/favorites') {
+        json(res, 200, { entries: store.listFavorites() });
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/favorites') {
+        const body = await readJsonBody<FavoriteRequestBody>(req);
+        const entry = store.setFavorite(body);
+        json(res, 200, { favorite: body.favorite, entry });
+        return;
+      }
+
+      if (method === 'GET' && pathname === '/api/presets') {
+        json(res, 200, { presets: store.listPresets() });
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/presets') {
+        const body = await readJsonBody<PresetRequestBody>(req);
+        const preset = store.savePreset(body);
+        json(res, 200, { preset });
+        return;
+      }
+
+      if (method === 'DELETE' && pathname.startsWith('/api/presets/')) {
+        const presetId = Number(pathname.replace('/api/presets/', ''));
+        if (!Number.isFinite(presetId)) {
+          json(res, 400, { ok: false, error: 'Invalid preset id' });
+          return;
+        }
+        store.deletePreset(presetId);
+        json(res, 200, { ok: true });
         return;
       }
 

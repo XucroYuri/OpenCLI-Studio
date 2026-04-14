@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildRegistryQuery, buildWorkbenchQuery, parseRegistryQuery, parseWorkbenchQuery } from './routes';
+import {
+  buildInsightQuery,
+  buildRegistryQuery,
+  buildWorkbenchQuery,
+  parseInsightQuery,
+  parseRegistryQuery,
+  parseWorkbenchQuery,
+} from './routes';
 
 describe('parseRegistryQuery', () => {
   it('hydrates registry filters from route query values', () => {
@@ -58,6 +65,25 @@ describe('workbench route helpers', () => {
       advancedMode: false,
     })).toEqual({
       command: 'google/trends',
+    });
+  });
+});
+
+describe('insight route helpers', () => {
+  it('round-trips recipe selection and advanced mode', () => {
+    expect(parseInsightQuery({
+      recipe: 'google-trends-daily',
+      advanced: '1',
+    })).toEqual({
+      recipeId: 'google-trends-daily',
+      advancedMode: true,
+    });
+
+    expect(buildInsightQuery({
+      recipeId: 'google-trends-daily',
+      advancedMode: false,
+    })).toEqual({
+      recipe: 'google-trends-daily',
     });
   });
 });

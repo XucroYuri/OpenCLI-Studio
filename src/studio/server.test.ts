@@ -152,6 +152,98 @@ describe('startStudioServer', () => {
     expect(recipes.recipes.some((item) => item.id === 'douyin-hashtag-hot')).toBe(true);
   });
 
+  it('persists favorites and presets through the local API', async () => {
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'google',
+          name: 'trends',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      execute: vi.fn(),
+      doctor: vi.fn(async () => ({ ok: true, summary: 'healthy' })),
+    });
+
+    const favoriteResponse = await fetch(`${server.url}/api/favorites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'command',
+        targetId: 'google/trends',
+        favorite: true,
+      }),
+    });
+    const favorite = await favoriteResponse.json() as {
+      entry: { kind: string; targetId: string } | null;
+      favorite: boolean;
+    };
+
+    expect(favorite).toMatchObject({
+      favorite: true,
+      entry: {
+        kind: 'command',
+        targetId: 'google/trends',
+      },
+    });
+
+    const favoritesResponse = await fetch(`${server.url}/api/favorites`);
+    const favorites = await favoritesResponse.json() as {
+      entries: Array<{ targetId: string }>;
+    };
+    expect(favorites.entries).toMatchObject([{ targetId: 'google/trends' }]);
+
+    const createPresetResponse = await fetch(`${server.url}/api/presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'workbench',
+        name: 'US Trends',
+        description: 'Track US trends',
+        state: {
+          command: 'google/trends',
+          args: { region: 'US' },
+        },
+      }),
+    });
+    const presetCreation = await createPresetResponse.json() as {
+      preset: { id: number; name: string; state: Record<string, unknown> };
+    };
+
+    expect(presetCreation.preset).toMatchObject({
+      name: 'US Trends',
+      state: {
+        command: 'google/trends',
+        args: { region: 'US' },
+      },
+    });
+
+    const presetsResponse = await fetch(`${server.url}/api/presets`);
+    const presets = await presetsResponse.json() as {
+      presets: Array<{ id: number; kind: string }>;
+    };
+    expect(presets.presets).toMatchObject([
+      {
+        id: presetCreation.preset.id,
+        kind: 'workbench',
+      },
+    ]);
+
+    const deletePresetResponse = await fetch(`${server.url}/api/presets/${presetCreation.preset.id}`, {
+      method: 'DELETE',
+    });
+    expect(deletePresetResponse.status).toBe(200);
+
+    const emptyPresetsResponse = await fetch(`${server.url}/api/presets`);
+    const emptyPresets = await emptyPresetsResponse.json() as {
+      presets: unknown[];
+    };
+    expect(emptyPresets.presets).toEqual([]);
+  });
+
   it('serves static assets and falls back to index.html for the app shell', async () => {
     const staticDir = path.join(tempDir, 'static');
     await fs.mkdir(path.join(staticDir, 'assets'), { recursive: true });

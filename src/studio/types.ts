@@ -58,6 +58,26 @@ export interface StudioRecipe {
   tags: string[];
 }
 
+export type StudioFavoriteKind = 'command' | 'recipe';
+
+export interface StudioFavoriteEntry {
+  kind: StudioFavoriteKind;
+  targetId: string;
+  createdAt: string;
+}
+
+export type StudioPresetKind = 'registry' | 'workbench' | 'insight';
+
+export interface StudioPresetEntry {
+  id: number;
+  kind: StudioPresetKind;
+  name: string;
+  description: string | null;
+  state: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StudioHistoryEntry {
   id: number;
   command: string;

@@ -1,12 +1,28 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
-import { executeCommand as postExecuteCommand, fetchDoctor, fetchEnv, fetchHistory, fetchRecipes, fetchRegistry } from '../lib/api';
+import {
+  deletePreset as requestDeletePreset,
+  executeCommand as postExecuteCommand,
+  fetchDoctor,
+  fetchEnv,
+  fetchFavorites,
+  fetchHistory,
+  fetchPresets,
+  fetchRecipes,
+  fetchRegistry,
+  savePreset as requestSavePreset,
+  setFavorite as requestSetFavorite,
+} from '../lib/api';
 import { listWorkbenchCommands, pickDefaultWorkbenchCommand } from '../lib/registry';
 import type {
   ExecuteResponse,
+  StudioFavoriteEntry,
+  StudioFavoriteKind,
   StudioDoctorResult,
   StudioEnv,
   StudioHistoryEntry,
+  StudioPresetEntry,
+  StudioPresetKind,
   StudioRecipe,
   StudioRegistryPayload,
 } from '../types';
@@ -32,8 +48,12 @@ export const useStudioStore = defineStore('studio', () => {
   const env = ref<StudioEnv | null>(null);
   const history = ref<StudioHistoryEntry[]>([]);
   const recipes = ref<StudioRecipe[]>([]);
+  const favorites = ref<StudioFavoriteEntry[]>([]);
+  const presets = ref<StudioPresetEntry[]>([]);
   const doctor = ref<StudioDoctorResult | null>(null);
   const lastExecution = ref<ExecuteResponse | null>(null);
+  const stagedWorkbenchArgs = ref<Record<string, unknown> | null>(null);
+  const stagedInsightArgs = ref<Record<string, unknown> | null>(null);
 
   const initializing = ref(false);
   const runningCommand = ref(false);
@@ -53,6 +73,29 @@ export const useStudioStore = defineStore('studio', () => {
   );
   const availableWorkbenchCommands = computed(() =>
     listWorkbenchCommands(registry.value.commands, advancedMode.value),
+  );
+  const favoriteCommandIds = computed(() =>
+    new Set(
+      favorites.value
+        .filter((entry) => entry.kind === 'command')
+        .map((entry) => entry.targetId),
+    ),
+  );
+  const favoriteRecipeIds = computed(() =>
+    new Set(
+      favorites.value
+        .filter((entry) => entry.kind === 'recipe')
+        .map((entry) => entry.targetId),
+    ),
+  );
+  const registryPresets = computed(() =>
+    presets.value.filter((preset) => preset.kind === 'registry'),
+  );
+  const workbenchPresets = computed(() =>
+    presets.value.filter((preset) => preset.kind === 'workbench'),
+  );
+  const insightPresets = computed(() =>
+    presets.value.filter((preset) => preset.kind === 'insight'),
   );
 
   function ensureSelectedCommand(): void {
@@ -89,17 +132,28 @@ export const useStudioStore = defineStore('studio', () => {
     loadError.value = null;
 
     try {
-      const [registryPayload, historyPayload, envPayload, recipePayload] = await Promise.all([
+      const [
+        registryPayload,
+        historyPayload,
+        envPayload,
+        recipePayload,
+        favoritesPayload,
+        presetsPayload,
+      ] = await Promise.all([
         fetchRegistry(),
         fetchHistory(),
         fetchEnv(),
         fetchRecipes(),
+        fetchFavorites(),
+        fetchPresets(),
       ]);
 
       registry.value = registryPayload;
       history.value = historyPayload.entries;
       env.value = envPayload;
       recipes.value = recipePayload.recipes;
+      favorites.value = favoritesPayload.entries;
+      presets.value = presetsPayload.presets;
 
       selectedCommand.value = pickDefaultWorkbenchCommand(
         registryPayload.commands,
@@ -114,6 +168,26 @@ export const useStudioStore = defineStore('studio', () => {
     } finally {
       initializing.value = false;
     }
+  }
+
+  function stageWorkbenchArgs(args: Record<string, unknown>): void {
+    stagedWorkbenchArgs.value = { ...args };
+  }
+
+  function consumeWorkbenchArgs(): Record<string, unknown> | null {
+    const nextArgs = stagedWorkbenchArgs.value;
+    stagedWorkbenchArgs.value = null;
+    return nextArgs;
+  }
+
+  function stageInsightArgs(args: Record<string, unknown>): void {
+    stagedInsightArgs.value = { ...args };
+  }
+
+  function consumeInsightArgs(): Record<string, unknown> | null {
+    const nextArgs = stagedInsightArgs.value;
+    stagedInsightArgs.value = null;
+    return nextArgs;
   }
 
   function upsertHistory(entry: StudioHistoryEntry): void {
@@ -156,6 +230,43 @@ export const useStudioStore = defineStore('studio', () => {
     history.value = historyPayload.entries;
   }
 
+  async function refreshFavorites(): Promise<void> {
+    const favoritesPayload = await fetchFavorites();
+    favorites.value = favoritesPayload.entries;
+  }
+
+  async function refreshPresets(): Promise<void> {
+    const presetsPayload = await fetchPresets();
+    presets.value = presetsPayload.presets;
+  }
+
+  async function toggleFavorite(
+    kind: StudioFavoriteKind,
+    targetId: string,
+    favorite: boolean,
+  ): Promise<void> {
+    await requestSetFavorite(kind, targetId, favorite);
+    await refreshFavorites();
+  }
+
+  async function savePreset(input: {
+    id?: number;
+    kind: StudioPresetKind;
+    name: string;
+    description?: string | null;
+    state: Record<string, unknown>;
+  }): Promise<StudioPresetEntry> {
+    const response = await requestSavePreset(input);
+    const nextPreset = response.preset;
+    presets.value = [nextPreset, ...presets.value.filter((preset) => preset.id !== nextPreset.id)];
+    return nextPreset;
+  }
+
+  async function deletePreset(id: number): Promise<void> {
+    await requestDeletePreset(id);
+    presets.value = presets.value.filter((preset) => preset.id !== id);
+  }
+
   async function runDoctor(): Promise<void> {
     runningDoctor.value = true;
 
@@ -171,8 +282,12 @@ export const useStudioStore = defineStore('studio', () => {
     env,
     history,
     recipes,
+    favorites,
+    presets,
     doctor,
     lastExecution,
+    stagedWorkbenchArgs,
+    stagedInsightArgs,
     initializing,
     runningCommand,
     runningDoctor,
@@ -184,13 +299,27 @@ export const useStudioStore = defineStore('studio', () => {
     selectedCommandItem,
     selectedRecipe,
     availableWorkbenchCommands,
+    favoriteCommandIds,
+    favoriteRecipeIds,
+    registryPresets,
+    workbenchPresets,
+    insightPresets,
     setSelectedCommand,
     setSelectedRecipe,
     setAdvancedMode,
+    stageWorkbenchArgs,
+    consumeWorkbenchArgs,
+    stageInsightArgs,
+    consumeInsightArgs,
     loadShell,
     runCommand,
     runRecipe,
     refreshHistory,
+    refreshFavorites,
+    refreshPresets,
+    toggleFavorite,
+    savePreset,
+    deletePreset,
     runDoctor,
   };
 });
