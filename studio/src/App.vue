@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
-import { RouterLink, RouterView, useRoute } from 'vue-router';
-import { NAlert, NConfigProvider, NMessageProvider, NSpin, NTag, type GlobalThemeOverrides } from 'naive-ui';
+import { RouterLink, RouterView, useRoute, useRouter, type LocationQueryRaw } from 'vue-router';
+import { NAlert, NConfigProvider, NMessageProvider, NSpin, NSwitch, NTag, type GlobalThemeOverrides } from 'naive-ui';
 import { useStudioStore } from './stores/studio';
 
 const store = useStudioStore();
 const route = useRoute();
+const router = useRouter();
 
 const navigation = [
   { to: '/', label: 'Overview' },
@@ -16,6 +17,16 @@ const navigation = [
 
 const pageTitle = computed(() => String(route.meta.title ?? 'OpenCLI Studio'));
 const pageDescription = computed(() => String(route.meta.description ?? 'Local-first control surface for the OpenCLI registry.'));
+const advancedModeModel = computed({
+  get: () => store.advancedMode,
+  set: (value: boolean) => {
+    store.setAdvancedMode(value);
+    const nextQuery: LocationQueryRaw = { ...route.query };
+    if (value) nextQuery.advanced = '1';
+    else delete nextQuery.advanced;
+    void router.replace({ query: nextQuery });
+  },
+});
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -104,6 +115,10 @@ onMounted(() => {
               <p>{{ pageDescription }}</p>
             </div>
             <div class="topbar__meta">
+              <label class="switch-inline topbar__switch">
+                <span>Advanced mode</span>
+                <n-switch v-model:value="advancedModeModel" />
+              </label>
               <n-tag size="small" type="success">CLI inherited</n-tag>
               <n-tag size="small" type="info">Local execution</n-tag>
               <n-tag size="small" type="warning">Contributor preview</n-tag>

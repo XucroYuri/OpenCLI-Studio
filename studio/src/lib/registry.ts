@@ -7,6 +7,16 @@ export interface RegistryFilters {
   capability: StudioCapability | 'all';
   risk: StudioRisk | 'all';
   supportsChartsOnly: boolean;
+  advancedMode: boolean;
+}
+
+export function listWorkbenchCommands(
+  commands: StudioCommandItem[],
+  advancedMode: boolean,
+): StudioCommandItem[] {
+  return commands
+    .filter((command) => advancedMode || command.meta.risk === 'safe')
+    .sort((left, right) => left.command.localeCompare(right.command));
 }
 
 export function filterRegistryCommands(
@@ -16,6 +26,8 @@ export function filterRegistryCommands(
   const search = filters.search.trim().toLowerCase();
 
   return commands.filter((command) => {
+    if (!filters.advancedMode && command.meta.risk !== 'safe') return false;
+
     if (search) {
       const haystack = [
         command.command,
@@ -39,15 +51,18 @@ export function filterRegistryCommands(
 export function pickDefaultWorkbenchCommand(
   commands: StudioCommandItem[],
   preferredCommand?: string,
+  advancedMode: boolean = false,
 ): string {
-  if (preferredCommand && commands.some((command) => command.command === preferredCommand)) {
+  const availableCommands = listWorkbenchCommands(commands, advancedMode);
+
+  if (preferredCommand && availableCommands.some((command) => command.command === preferredCommand)) {
     return preferredCommand;
   }
 
-  const fallback = commands.find((command) =>
+  const fallback = availableCommands.find((command) =>
     command.meta.risk === 'safe'
     && (command.meta.capability === 'discovery' || command.meta.capability === 'search'),
   );
 
-  return fallback?.command ?? commands[0]?.command ?? '';
+  return fallback?.command ?? availableCommands[0]?.command ?? '';
 }

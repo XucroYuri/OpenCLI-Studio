@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterRegistryCommands, pickDefaultWorkbenchCommand } from './registry';
+import { filterRegistryCommands, listWorkbenchCommands, pickDefaultWorkbenchCommand } from './registry';
 import type { StudioCommandItem } from '../types';
 
 const COMMANDS: StudioCommandItem[] = [
@@ -74,9 +74,50 @@ describe('filterRegistryCommands', () => {
       capability: 'all',
       risk: 'all',
       supportsChartsOnly: true,
+      advancedMode: true,
     });
 
     expect(filtered.map((item) => item.command)).toEqual(['google/trends']);
+  });
+
+  it('hides confirm and dangerous commands until advanced mode is enabled', () => {
+    const safeOnly = filterRegistryCommands(COMMANDS, {
+      search: '',
+      site: 'all',
+      mode: 'all',
+      capability: 'all',
+      risk: 'all',
+      supportsChartsOnly: false,
+      advancedMode: false,
+    });
+
+    const advanced = filterRegistryCommands(COMMANDS, {
+      search: '',
+      site: 'all',
+      mode: 'all',
+      capability: 'all',
+      risk: 'all',
+      supportsChartsOnly: false,
+      advancedMode: true,
+    });
+
+    expect(safeOnly.map((item) => item.command)).toEqual(['bilibili/hot', 'google/trends']);
+    expect(advanced.map((item) => item.command)).toEqual(['bilibili/hot', 'google/trends', 'douyin/publish']);
+  });
+});
+
+describe('listWorkbenchCommands', () => {
+  it('keeps risky commands out of the picker unless advanced mode is active', () => {
+    expect(listWorkbenchCommands(COMMANDS, false).map((item) => item.command)).toEqual([
+      'bilibili/hot',
+      'google/trends',
+    ]);
+
+    expect(listWorkbenchCommands(COMMANDS, true).map((item) => item.command)).toEqual([
+      'bilibili/hot',
+      'douyin/publish',
+      'google/trends',
+    ]);
   });
 });
 

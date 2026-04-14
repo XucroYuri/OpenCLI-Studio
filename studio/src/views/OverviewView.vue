@@ -25,14 +25,20 @@ async function handleDoctor(): Promise<void> {
 function openWorkbench(command?: string): void {
   void router.push({
     name: 'workbench',
-    query: command ? { command } : undefined,
+    query: {
+      ...(command ? { command } : {}),
+      ...(store.advancedMode ? { advanced: '1' } : {}),
+    },
   });
 }
 
 function openInsight(recipeId?: string): void {
   void router.push({
     name: 'insights',
-    query: recipeId ? { recipe: recipeId } : undefined,
+    query: {
+      ...(recipeId ? { recipe: recipeId } : {}),
+      ...(store.advancedMode ? { advanced: '1' } : {}),
+    },
   });
 }
 </script>

@@ -1,29 +1,38 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { NButton, NCard, NInput, NSelect, NSwitch, NTag } from 'naive-ui';
 import { filterRegistryCommands, type RegistryFilters } from '../lib/registry';
+import { buildRegistryQuery, parseRegistryQuery } from '../lib/routes';
 import { useStudioStore } from '../stores/studio';
 
 const store = useStudioStore();
 const router = useRouter();
 const route = useRoute();
 
-const search = ref('');
-const site = ref(typeof route.query.site === 'string' ? route.query.site : 'all');
-const mode = ref<RegistryFilters['mode']>('all');
-const capability = ref<RegistryFilters['capability']>('all');
-const risk = ref<RegistryFilters['risk']>('all');
-const supportsChartsOnly = ref(false);
+const initialFilters = parseRegistryQuery(route.query);
+if (Object.prototype.hasOwnProperty.call(route.query, 'advanced')) {
+  store.setAdvancedMode(initialFilters.advancedMode);
+}
 
-const filteredCommands = computed(() => filterRegistryCommands(store.registry.commands, {
+const search = ref(initialFilters.search);
+const site = ref(initialFilters.site);
+const mode = ref<RegistryFilters['mode']>(initialFilters.mode);
+const capability = ref<RegistryFilters['capability']>(initialFilters.capability);
+const risk = ref<RegistryFilters['risk']>(initialFilters.risk);
+const supportsChartsOnly = ref(initialFilters.supportsChartsOnly);
+
+const currentFilters = computed<RegistryFilters>(() => ({
   search: search.value,
   site: site.value,
   mode: mode.value,
   capability: capability.value,
   risk: risk.value,
   supportsChartsOnly: supportsChartsOnly.value,
+  advancedMode: store.advancedMode,
 }));
+
+const filteredCommands = computed(() => filterRegistryCommands(store.registry.commands, currentFilters.value));
 
 const siteOptions = computed(() => [
   { label: 'All sites', value: 'all' },
@@ -61,9 +70,36 @@ function openWorkbench(command: string): void {
   store.setSelectedCommand(command);
   void router.push({
     name: 'workbench',
-    query: { command },
+    query: {
+      command,
+      ...(store.advancedMode ? { advanced: '1' } : {}),
+    },
   });
 }
+
+watch(() => route.query, (query) => {
+  const nextFilters = parseRegistryQuery(query);
+
+  search.value = nextFilters.search;
+  site.value = nextFilters.site;
+  mode.value = nextFilters.mode;
+  capability.value = nextFilters.capability;
+  risk.value = nextFilters.risk;
+  supportsChartsOnly.value = nextFilters.supportsChartsOnly;
+
+  if (Object.prototype.hasOwnProperty.call(query, 'advanced')) {
+    store.setAdvancedMode(nextFilters.advancedMode);
+  }
+});
+
+watch(currentFilters, (nextFilters) => {
+  const nextQuery = buildRegistryQuery(nextFilters);
+  const currentQuery = JSON.stringify(route.query);
+  const targetQuery = JSON.stringify(nextQuery);
+  if (currentQuery !== targetQuery) {
+    void router.replace({ query: nextQuery });
+  }
+}, { deep: true });
 </script>
 
 <template>
@@ -82,6 +118,7 @@ function openWorkbench(command: string): void {
       </div>
       <div class="panel-note">
         {{ filteredCommands.length }} commands match the current facet set across {{ store.registry.sites.length }} sites.
+        <template v-if="!store.advancedMode"> Risky commands are hidden until advanced mode is enabled. </template>
       </div>
     </n-card>
 

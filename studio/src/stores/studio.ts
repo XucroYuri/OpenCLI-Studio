@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { executeCommand as postExecuteCommand, fetchDoctor, fetchEnv, fetchHistory, fetchRecipes, fetchRegistry } from '../lib/api';
-import { pickDefaultWorkbenchCommand } from '../lib/registry';
+import { listWorkbenchCommands, pickDefaultWorkbenchCommand } from '../lib/registry';
 import type {
   ExecuteResponse,
   StudioDoctorResult,
@@ -13,6 +13,18 @@ import type {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function readBooleanPreference(key: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback;
+  const value = window.localStorage.getItem(key);
+  if (value === null) return fallback;
+  return value === '1';
+}
+
+function writeBooleanPreference(key: string, value: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, value ? '1' : '0');
 }
 
 export const useStudioStore = defineStore('studio', () => {
@@ -31,6 +43,7 @@ export const useStudioStore = defineStore('studio', () => {
 
   const selectedCommand = ref('');
   const selectedRecipeId = ref('');
+  const advancedMode = ref(readBooleanPreference('opencli-studio:advanced-mode', false));
 
   const selectedCommandItem = computed(() =>
     registry.value.commands.find((command) => command.command === selectedCommand.value) ?? null,
@@ -38,6 +51,21 @@ export const useStudioStore = defineStore('studio', () => {
   const selectedRecipe = computed(() =>
     recipes.value.find((recipe) => recipe.id === selectedRecipeId.value) ?? null,
   );
+  const availableWorkbenchCommands = computed(() =>
+    listWorkbenchCommands(registry.value.commands, advancedMode.value),
+  );
+
+  function ensureSelectedCommand(): void {
+    const nextCommand = pickDefaultWorkbenchCommand(
+      registry.value.commands,
+      selectedCommand.value,
+      advancedMode.value,
+    );
+
+    if (nextCommand) {
+      selectedCommand.value = nextCommand;
+    }
+  }
 
   function setSelectedCommand(command: string): void {
     selectedCommand.value = command;
@@ -45,6 +73,12 @@ export const useStudioStore = defineStore('studio', () => {
 
   function setSelectedRecipe(recipeId: string): void {
     selectedRecipeId.value = recipeId;
+  }
+
+  function setAdvancedMode(value: boolean): void {
+    advancedMode.value = value;
+    writeBooleanPreference('opencli-studio:advanced-mode', value);
+    ensureSelectedCommand();
   }
 
   async function loadShell(force: boolean = false): Promise<void> {
@@ -67,9 +101,11 @@ export const useStudioStore = defineStore('studio', () => {
       env.value = envPayload;
       recipes.value = recipePayload.recipes;
 
-      if (!selectedCommand.value) {
-        selectedCommand.value = pickDefaultWorkbenchCommand(registryPayload.commands);
-      }
+      selectedCommand.value = pickDefaultWorkbenchCommand(
+        registryPayload.commands,
+        selectedCommand.value,
+        advancedMode.value,
+      );
       if (!selectedRecipeId.value) {
         selectedRecipeId.value = recipePayload.recipes[0]?.id ?? '';
       }
@@ -144,10 +180,13 @@ export const useStudioStore = defineStore('studio', () => {
     executionError,
     selectedCommand,
     selectedRecipeId,
+    advancedMode,
     selectedCommandItem,
     selectedRecipe,
+    availableWorkbenchCommands,
     setSelectedCommand,
     setSelectedRecipe,
+    setAdvancedMode,
     loadShell,
     runCommand,
     runRecipe,
