@@ -18,6 +18,7 @@ describe('registry preset state helpers', () => {
       mode: 'public',
       capability: 'search',
       risk: 'safe',
+      purpose: 'all',
       supportsChartsOnly: true,
       advancedMode: true,
     };

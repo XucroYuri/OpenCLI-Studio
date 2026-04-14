@@ -1,11 +1,21 @@
 import type { StudioCapability, StudioCommandItem, StudioMode, StudioRisk, StudioSurface } from '../types';
 
+export type RegistryPurpose =
+  | 'discovery'
+  | 'automation'
+  | 'auth'
+  | 'asset'
+  | 'analysis'
+  | 'integration'
+  | 'utility';
+
 export interface RegistryFilters {
   search: string;
   site: string;
   surface: StudioSurface | 'all';
   mode: StudioMode | 'all';
   capability: StudioCapability | 'all';
+  purpose: RegistryPurpose | 'all';
   risk: StudioRisk | 'all';
   supportsChartsOnly: boolean;
   advancedMode: boolean;
@@ -44,10 +54,51 @@ export function filterRegistryCommands(
     if (filters.mode !== 'all' && command.meta.mode !== filters.mode) return false;
     if (filters.capability !== 'all' && command.meta.capability !== filters.capability) return false;
     if (filters.risk !== 'all' && command.meta.risk !== filters.risk) return false;
+    if (filters.purpose !== 'all' && inferCommandPurpose(command) !== filters.purpose) return false;
     if (filters.supportsChartsOnly && !command.meta.uiHints.supportsCharts) return false;
 
     return true;
   });
+}
+
+export function inferCommandPurpose(command: StudioCommandItem): RegistryPurpose {
+  const haystack = [
+    command.command,
+    command.name,
+    command.description,
+    command.strategy,
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  if (command.meta.surface === 'external' || command.meta.mode === 'external' || command.meta.capability === 'tooling') {
+    return 'integration';
+  }
+
+  if (command.meta.capability === 'account' || haystack.includes('login') || haystack.includes('auth')) {
+    return 'auth';
+  }
+
+  if (command.meta.capability === 'discovery' || command.meta.capability === 'search' || haystack.includes('discover') || haystack.includes('search')) {
+    return 'discovery';
+  }
+
+  if (command.meta.capability === 'detail' || haystack.includes('list') || haystack.includes('get') || haystack.includes('show')) {
+    return 'analysis';
+  }
+
+  if (command.meta.capability === 'action' || command.meta.capability === 'asset') {
+    if (haystack.includes('snapshot') || haystack.includes('monitor') || haystack.includes('watch')) {
+      return 'automation';
+    }
+    return command.meta.capability === 'asset' ? 'asset' : 'automation';
+  }
+
+  if (command.meta.capability === 'other') {
+    return 'utility';
+  }
+
+  return haystack.includes('asset') ? 'asset' : 'utility';
 }
 
 export function pickDefaultWorkbenchCommand(

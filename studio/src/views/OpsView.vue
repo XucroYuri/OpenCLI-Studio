@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { NButton, NCard, NEmpty, NSwitch, NTag, useMessage } from 'naive-ui';
 import { useStudioI18n } from '../lib/i18n';
-import { buildDoctorStatusRows, buildOpsMetrics, type OpsTone } from '../lib/ops';
+import { buildDoctorStatusRowsWithLabel, buildOpsMetrics, type OpsTone } from '../lib/ops';
 import { useStudioStore } from '../stores/studio';
 import type { StudioExternalCliEntry, StudioPluginEntry } from '../types';
 
@@ -21,10 +21,11 @@ const metrics = computed(() =>
     plugins: store.plugins,
     externalClis: store.externalClis,
     doctor: store.doctor,
+    t,
   }),
 );
 
-const doctorRows = computed(() => buildDoctorStatusRows(store.doctor));
+const doctorRows = computed(() => buildDoctorStatusRowsWithLabel(store.doctor, t));
 const sessions = computed(() => store.doctor?.sessions ?? []);
 const unresolvedPluginCount = computed(() =>
   store.plugins.filter((plugin) => plugin.registeredCommandCount < plugin.declaredCommandCount).length,
@@ -40,6 +41,14 @@ function getErrorMessage(error: unknown): string {
 function toneToTagType(tone: OpsTone): 'default' | 'info' | 'success' | 'warning' | 'error' {
   if (tone === 'default') return 'default';
   return tone;
+}
+
+function toneLabel(tone: OpsTone | string): string {
+  if (tone === 'success') return t('common.statusSuccess');
+  if (tone === 'warning') return t('common.statusWarning');
+  if (tone === 'error') return t('common.statusError');
+  if (tone === 'info') return t('common.statusInfo');
+  return t('common.statusNeutral');
 }
 
 function pluginSourceType(plugin: StudioPluginEntry): 'default' | 'info' | 'warning' {
@@ -69,6 +78,12 @@ function formatIdleTime(ms: number): string {
 
 function pluginCommands(plugin: StudioPluginEntry) {
   return store.registry.commands.filter((command) => command.site === plugin.name);
+}
+
+function pluginSourceKindLabel(value: StudioPluginEntry['sourceKind']): string {
+  if (value === 'git') return t('ops.sourceKind.git');
+  if (value === 'local') return t('ops.sourceKind.local');
+  return t('ops.sourceKind.unknown');
 }
 
 function openOpsRegistry(site?: string, surface?: 'plugin' | 'external' | 'builtin'): void {
@@ -148,7 +163,7 @@ async function runDoctor(): Promise<void> {
         <div v-for="metric in metrics" :key="metric.label" class="metric-tile">
           <span>{{ metric.label }}</span>
           <strong>{{ metric.value }}</strong>
-          <n-tag size="small" :type="toneToTagType(metric.tone)">{{ metric.tone }}</n-tag>
+          <n-tag size="small" :type="toneToTagType(metric.tone)">{{ toneLabel(metric.tone) }}</n-tag>
         </div>
       </div>
     </n-card>
@@ -161,7 +176,7 @@ async function runDoctor(): Promise<void> {
           <div v-for="row in doctorRows" :key="row.label" class="kv-item">
             <span>{{ row.label }}</span>
             <strong>{{ row.value }}</strong>
-            <n-tag size="small" :type="toneToTagType(row.tone)">{{ row.tone }}</n-tag>
+            <n-tag size="small" :type="toneToTagType(row.tone)">{{ toneLabel(row.tone) }}</n-tag>
           </div>
         </div>
 
@@ -244,7 +259,7 @@ async function runDoctor(): Promise<void> {
               <p>{{ plugin.description || t('common.noDescription') }}</p>
             </div>
             <div class="inventory-item__meta">
-              <n-tag size="small" :type="pluginSourceType(plugin)">{{ plugin.sourceKind }}</n-tag>
+              <n-tag size="small" :type="pluginSourceType(plugin)">{{ pluginSourceKindLabel(plugin.sourceKind) }}</n-tag>
               <n-tag size="small" :type="pluginCoverageType(plugin)">
                 {{ t('ops.registeredCoverage', { registered: plugin.registeredCommandCount, declared: plugin.declaredCommandCount }) }}
               </n-tag>

@@ -18,6 +18,7 @@ export function parseRegistryQuery(query: QueryRecord): RegistryFilters {
     surface: readString(query, 'surface', 'all') as RegistryFilters['surface'],
     mode: readString(query, 'mode', 'all') as RegistryFilters['mode'],
     capability: readString(query, 'capability', 'all') as RegistryFilters['capability'],
+    purpose: readString(query, 'purpose', 'all') as RegistryFilters['purpose'],
     risk: readString(query, 'risk', 'all') as RegistryFilters['risk'],
     supportsChartsOnly: readBoolean(query, 'charts'),
     advancedMode: readBoolean(query, 'advanced'),
@@ -32,6 +33,7 @@ export function buildRegistryQuery(state: RegistryFilters): Record<string, strin
   if (state.surface !== 'all') query.surface = state.surface;
   if (state.mode !== 'all') query.mode = state.mode;
   if (state.capability !== 'all') query.capability = state.capability;
+  if (state.purpose !== 'all') query.purpose = state.purpose;
   if (state.risk !== 'all') query.risk = state.risk;
   if (state.supportsChartsOnly) query.charts = '1';
   if (state.advancedMode) query.advanced = '1';

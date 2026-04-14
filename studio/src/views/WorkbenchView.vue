@@ -63,7 +63,7 @@ const recentRuns = computed(() =>
 );
 const runOptions = computed(() =>
   recentRuns.value.map((entry) => ({
-    label: `${new Date(entry.startedAt).toLocaleString()} · ${entry.status}`,
+    label: `${new Date(entry.startedAt).toLocaleString()} · ${statusLabel(entry.status)}`,
     value: entry.id,
   })),
 );
@@ -88,6 +88,7 @@ const commandReadiness = computed(() =>
     command: command.value,
     doctor: store.doctor,
     plugins: store.plugins,
+    t,
   }),
 );
 
@@ -301,6 +302,30 @@ function readinessAlertType(tone: 'success' | 'info' | 'warning' | 'error'): 'su
   return tone;
 }
 
+function modeLabel(value: 'public' | 'browser' | 'desktop' | 'external'): string {
+  return t(`registry.mode.${value}`);
+}
+
+function surfaceLabel(value: 'builtin' | 'plugin' | 'external'): string {
+  return t(`registry.surface.${value}`);
+}
+
+function capabilityLabel(value: 'discovery' | 'search' | 'detail' | 'account' | 'action' | 'asset' | 'tooling' | 'other'): string {
+  return t(`registry.capability.${value}`);
+}
+
+function riskLabel(value: 'safe' | 'confirm' | 'dangerous'): string {
+  if (value === 'safe') return t('registry.status.safe');
+  if (value === 'confirm') return t('registry.status.confirm');
+  return t('registry.status.dangerous');
+}
+
+function statusLabel(status: 'success' | 'error' | string): string {
+  if (status === 'success') return t('common.statusSuccess');
+  if (status === 'error') return t('common.statusError');
+  return String(status);
+}
+
 function openOps(): void {
   void router.push({ name: 'ops' });
 }
@@ -357,11 +382,11 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
         </n-alert>
         <div v-if="command" class="command-inspector">
           <div class="chip-cloud">
-            <n-tag size="small" type="default">{{ command.meta.surface }}</n-tag>
-            <n-tag size="small" type="info">{{ command.meta.mode }}</n-tag>
-            <n-tag size="small" type="success">{{ command.meta.capability }}</n-tag>
+            <n-tag size="small" type="default">{{ surfaceLabel(command.meta.surface) }}</n-tag>
+            <n-tag size="small" type="info">{{ modeLabel(command.meta.mode) }}</n-tag>
+            <n-tag size="small" type="success">{{ capabilityLabel(command.meta.capability) }}</n-tag>
             <n-tag size="small" :type="command.meta.risk === 'safe' ? 'success' : command.meta.risk === 'confirm' ? 'warning' : 'error'">
-              {{ command.meta.risk }}
+              {{ riskLabel(command.meta.risk) }}
             </n-tag>
           </div>
           <p>{{ command.description || t('common.noDescription') }}</p>
@@ -391,7 +416,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
             </button>
             <div class="stack-row__meta">
               <n-button size="small" quaternary @click.stop="reuseHistoryEntry(entry)">{{ t('workbench.reuseArgs') }}</n-button>
-              <n-tag :type="entry.status === 'success' ? 'success' : 'error'" size="small">{{ entry.status }}</n-tag>
+              <n-tag :type="entry.status === 'success' ? 'success' : 'error'" size="small">{{ statusLabel(entry.status) }}</n-tag>
               <span>{{ entry.durationMs }} ms</span>
             </div>
           </div>
@@ -416,7 +441,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
               <span>{{ snapshot.command }}</span>
             </div>
             <div class="stack-row__meta">
-              <n-tag :type="snapshot.status === 'success' ? 'success' : 'error'" size="small">{{ snapshot.status }}</n-tag>
+              <n-tag :type="snapshot.status === 'success' ? 'success' : 'error'" size="small">{{ statusLabel(snapshot.status) }}</n-tag>
               <span>{{ snapshot.durationMs }} ms</span>
             </div>
           </div>
@@ -468,7 +493,7 @@ async function removeWorkbenchPreset(preset: StudioPresetEntry): Promise<void> {
             :button-label="t('workbench.savePreset')"
             :title="t('workbench.savePresetTitle')"
             :description="t('workbench.savePresetDescription')"
-            :default-name="command ? `${command.command} preset` : 'Workbench Preset'"
+            :default-name="command ? t('workbench.commandPreset', { value: command.command }) : t('workbench.fallbackPreset')"
             :default-description="command?.description || ''"
             :disabled="!command"
             :save="saveWorkbenchPreset"

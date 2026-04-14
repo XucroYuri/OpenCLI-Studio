@@ -85,12 +85,13 @@ const commandReadiness = computed(() =>
     command: recipeCommand.value,
     doctor: store.doctor,
     plugins: store.plugins,
+    t,
   }),
 );
 
 const snapshotOptions = computed(() =>
   currentSnapshots.value.map((snapshot) => ({
-    label: `${new Date(snapshot.capturedAt).toLocaleString()} · ${snapshot.status}`,
+    label: `${new Date(snapshot.capturedAt).toLocaleString()} · ${snapshotStatusLabel(snapshot.status)}`,
     value: snapshot.id,
   })),
 );
@@ -303,6 +304,28 @@ function readinessAlertType(tone: 'success' | 'info' | 'warning' | 'error'): 'su
   return tone;
 }
 
+function statusLabel(status: 'success' | 'error' | string): string {
+  if (status === 'success') return t('common.statusSuccess');
+  if (status === 'error') return t('common.statusError');
+  return String(status);
+}
+
+function snapshotStatusLabel(status: 'success' | 'error' | 'idle' | string): string {
+  return statusLabel(status);
+}
+
+function modeLabel(value: 'public' | 'browser' | 'desktop' | 'external'): string {
+  return t(`registry.mode.${value}`);
+}
+
+function surfaceLabel(value: 'builtin' | 'plugin' | 'external'): string {
+  return t(`registry.surface.${value}`);
+}
+
+function capabilityLabel(value: 'discovery' | 'search' | 'detail' | 'account' | 'action' | 'asset' | 'tooling' | 'other'): string {
+  return t(`registry.capability.${value}`);
+}
+
 function openInWorkbench(): void {
   if (!recipe.value) return;
   store.setSelectedCommand(recipe.value.command);
@@ -383,9 +406,9 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
           </n-alert>
           <div class="chip-cloud">
             <n-tag size="small" type="warning">{{ recipe.command }}</n-tag>
-            <n-tag v-if="recipeCommand" size="small" type="default">{{ recipeCommand.meta.surface }}</n-tag>
-            <n-tag v-if="recipeCommand" size="small" type="info">{{ recipeCommand.meta.mode }}</n-tag>
-            <n-tag v-if="recipeCommand" size="small" type="success">{{ recipeCommand.meta.capability }}</n-tag>
+            <n-tag v-if="recipeCommand" size="small" type="default">{{ surfaceLabel(recipeCommand.meta.surface) }}</n-tag>
+            <n-tag v-if="recipeCommand" size="small" type="info">{{ modeLabel(recipeCommand.meta.mode) }}</n-tag>
+            <n-tag v-if="recipeCommand" size="small" type="success">{{ capabilityLabel(recipeCommand.meta.capability) }}</n-tag>
           </div>
           <p class="panel-note">{{ recipe.description }}</p>
           <div class="card-actions">
@@ -461,7 +484,7 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
 
             <div v-if="currentJob" class="chip-cloud">
               <n-tag size="small" :type="currentJob.lastStatus === 'error' ? 'error' : currentJob.lastStatus === 'success' ? 'success' : 'warning'">
-                {{ currentJob.lastStatus }}
+                {{ snapshotStatusLabel(currentJob.lastStatus) }}
               </n-tag>
               <span class="chip chip--small">{{ t('insights.lastRun', { value: currentJob.lastRunAt ? new Date(currentJob.lastRunAt).toLocaleString() : t('insights.never') }) }}</span>
             </div>

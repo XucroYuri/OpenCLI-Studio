@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { buildSvgChartLayout } from '../lib/chart-layout';
+import { useStudioI18n } from '../lib/i18n';
 import type { ResultChartModel } from '../lib/results';
 
 const props = defineProps<{
   model: ResultChartModel;
 }>();
+
+const { t } = useStudioI18n();
 
 const width = 720;
 const height = 320;
@@ -18,7 +21,7 @@ const layout = computed(() => buildSvgChartLayout(props.model, { width, height }
       class="chart-panel__svg"
       :viewBox="`0 0 ${layout.width} ${layout.height}`"
       role="img"
-      aria-label="Structured result chart"
+      :aria-label="t('resultPanel.chartAriaLabel', { label: props.model.labelKey })"
     >
       <g>
         <line

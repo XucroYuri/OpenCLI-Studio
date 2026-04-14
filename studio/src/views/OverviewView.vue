@@ -118,6 +118,21 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
 
   openWorkbench(command);
 }
+
+function statusLabel(status: 'success' | 'error' | string): string {
+  if (status === 'success') return t('common.statusSuccess');
+  if (status === 'error') return t('common.statusError');
+  return String(status);
+}
+
+function jobStatusLabel(status: 'idle' | 'success' | 'error' | string): string {
+  if (status === 'idle') return t('common.statusIdle');
+  return statusLabel(status);
+}
+
+function capabilityLabel(value: 'discovery' | 'search' | 'detail' | 'account' | 'action' | 'asset' | 'tooling' | 'other'): string {
+  return t(`registry.capability.${value}`);
+}
 </script>
 
 <template>
@@ -178,7 +193,9 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
           </div>
           <div class="kv-item">
             <span>{{ t('overview.commandSurface') }}</span>
-            <strong>{{ store.env.commandCount }} total / {{ store.env.browserCommandCount }} browser</strong>
+            <strong>
+              {{ store.env.commandCount }} {{ t('overview.metrics.total') }} / {{ store.env.browserCommandCount }} {{ t('overview.metrics.browser') }}
+            </strong>
           </div>
         </div>
         <n-spin :show="store.runningDoctor">
@@ -197,7 +214,7 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
               <span>{{ entry.startedAt }}</span>
             </div>
             <div class="stack-row__meta">
-              <n-tag :type="entry.status === 'success' ? 'success' : 'error'" size="small">{{ entry.status }}</n-tag>
+              <n-tag :type="entry.status === 'success' ? 'success' : 'error'" size="small">{{ statusLabel(entry.status) }}</n-tag>
               <span>{{ entry.durationMs }} ms</span>
             </div>
           </button>
@@ -216,7 +233,7 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
             </button>
             <div class="stack-row__meta">
               <n-tag size="small" :type="job.lastStatus === 'error' ? 'error' : job.lastStatus === 'success' ? 'success' : 'warning'">
-                {{ job.lastStatus }}
+                {{ jobStatusLabel(job.lastStatus) }}
               </n-tag>
               <span>{{ job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : t('common.notScheduled') }}</span>
             </div>
@@ -242,7 +259,7 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
               <span>{{ new Date(snapshot.capturedAt).toLocaleString() }}</span>
             </div>
             <div class="stack-row__meta">
-              <n-tag :type="snapshot.status === 'success' ? 'success' : 'error'" size="small">{{ snapshot.status }}</n-tag>
+              <n-tag :type="snapshot.status === 'success' ? 'success' : 'error'" size="small">{{ statusLabel(snapshot.status) }}</n-tag>
               <span>{{ snapshot.durationMs }} ms</span>
             </div>
           </button>
@@ -267,7 +284,7 @@ function openSnapshotSource(sourceKind: string, sourceId: string, command: strin
                   <strong>{{ command.command }}</strong>
                   <span>{{ command.description || command.site }}</span>
                 </div>
-                <n-tag size="small" type="info">{{ command.meta.capability }}</n-tag>
+                <n-tag size="small" type="info">{{ capabilityLabel(command.meta.capability) }}</n-tag>
               </button>
             </div>
             <n-empty v-else :description="t('overview.favoriteCommandsEmpty')" />

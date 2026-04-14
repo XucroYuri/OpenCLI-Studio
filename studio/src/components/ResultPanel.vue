@@ -33,6 +33,8 @@ const columns = computed(() =>
   })),
 );
 
+const summaryKindLabel = computed(() => t(`resultPanel.summaryKinds.${presentation.value.summary.kind}`));
+
 async function copyArtifact(artifact: ResultExportArtifact): Promise<void> {
   try {
     await navigator.clipboard.writeText(artifact.contents);
@@ -62,7 +64,7 @@ function downloadArtifact(artifact: ResultExportArtifact): void {
     <template v-else>
       <div class="result-panel__summary">
         <div class="result-panel__summary-copy">
-          <n-tag type="warning" size="small">{{ presentation.summary.kind }}</n-tag>
+          <n-tag type="warning" size="small">{{ summaryKindLabel }}</n-tag>
           <span>{{ t('resultPanel.observed', { count: presentation.summary.count }) }}</span>
         </div>
         <div v-if="exportBundle" class="result-panel__exports">
