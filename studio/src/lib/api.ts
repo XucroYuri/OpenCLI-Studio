@@ -17,11 +17,29 @@ import type {
   StudioSnapshotSourceKind,
 } from '../types';
 
+function parseErrorMessage(body: string): string | null {
+  if (!body) return null;
+
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
+    if (typeof parsed.error === 'string' && parsed.error.length > 0) {
+      return parsed.error;
+    }
+    if (typeof parsed.message === 'string' && parsed.message.length > 0) {
+      return parsed.message;
+    }
+  } catch {
+    // Fall back to the raw response body below.
+  }
+
+  return body;
+}
+
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init);
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(body || `HTTP ${response.status}`);
+    throw new Error(parseErrorMessage(body) || `HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
 }

@@ -109,6 +109,11 @@ function readRequiredString(value: unknown, field: string): string {
   return value.trim();
 }
 
+function readOptionalString(value: unknown, field: string): string | undefined {
+  if (typeof value === 'undefined') return undefined;
+  return readRequiredString(value, field);
+}
+
 function readOptionalDescription(value: unknown): string | null | undefined {
   if (typeof value === 'undefined') return undefined;
   if (value === null) return null;
@@ -134,11 +139,61 @@ function readPositiveNumber(value: unknown, field: string): number {
   return value;
 }
 
+function readOptionalPositiveInteger(value: unknown, field: string): number | undefined {
+  if (typeof value === 'undefined') return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw new StudioRequestError(400, `Invalid ${field}`);
+  }
+  return value;
+}
+
 function readBoolean(value: unknown, field: string): boolean {
   if (typeof value !== 'boolean') {
     throw new StudioRequestError(400, `Invalid ${field}`);
   }
   return value;
+}
+
+function validateFavoriteRequestBody(body: FavoriteRequestBody): FavoriteRequestBody {
+  const kind = readRequiredString(body.kind, 'kind');
+  if (kind !== 'command' && kind !== 'recipe') {
+    throw new StudioRequestError(400, 'Invalid kind');
+  }
+
+  return {
+    kind,
+    targetId: readRequiredString(body.targetId, 'targetId'),
+    favorite: readBoolean(body.favorite, 'favorite'),
+  };
+}
+
+function validatePresetRequestBody(body: PresetRequestBody): PresetRequestBody {
+  const kind = readRequiredString(body.kind, 'kind');
+  if (kind !== 'registry' && kind !== 'workbench' && kind !== 'insight') {
+    throw new StudioRequestError(400, 'Invalid kind');
+  }
+
+  return {
+    id: readOptionalPositiveInteger(body.id, 'id'),
+    kind,
+    name: readRequiredString(body.name, 'name'),
+    description: readOptionalDescription(body.description),
+    state: readPlainRecord(body.state, 'state'),
+  };
+}
+
+function validateSnapshotRequestBody(body: SnapshotRequestBody): SnapshotRequestBody {
+  const sourceKind = readRequiredString(body.sourceKind, 'sourceKind');
+  if (sourceKind !== 'command' && sourceKind !== 'recipe') {
+    throw new StudioRequestError(400, 'Invalid sourceKind');
+  }
+
+  return {
+    sourceKind,
+    sourceId: readRequiredString(body.sourceId, 'sourceId'),
+    command: readOptionalString(body.command, 'command'),
+    args: readPlainRecord(body.args, 'args'),
+  };
 }
 
 function validateJobRequestBody(body: JobRequestBody): JobRequestBody {
@@ -161,6 +216,20 @@ function validateJobRequestBody(body: JobRequestBody): JobRequestBody {
     args: readPlainRecord(body.args, 'args'),
     intervalMinutes: readPositiveNumber(body.intervalMinutes, 'intervalMinutes'),
     enabled: readBoolean(body.enabled, 'enabled'),
+  };
+}
+
+function validateDoctorRequestBody(body: DoctorRequestBody): DoctorRequestBody {
+  return {
+    live: typeof body.live === 'undefined' ? undefined : readBoolean(body.live, 'live'),
+    sessions: typeof body.sessions === 'undefined' ? undefined : readBoolean(body.sessions, 'sessions'),
+  };
+}
+
+function validateExecuteRequestBody(body: ExecuteRequestBody): ExecuteRequestBody {
+  return {
+    command: readRequiredString(body.command, 'command'),
+    args: readPlainRecord(body.args, 'args'),
   };
 }
 
@@ -669,7 +738,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       }
 
       if (method === 'POST' && pathname === '/api/snapshots') {
-        const body = await readJsonBody<SnapshotRequestBody>(req);
+        const body = validateSnapshotRequestBody(await readJsonBody<SnapshotRequestBody>(req));
         const snapshot = await captureSnapshot(body);
         json(res, 200, { snapshot });
         return;
@@ -681,7 +750,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       }
 
       if (method === 'POST' && pathname === '/api/favorites') {
-        const body = await readJsonBody<FavoriteRequestBody>(req);
+        const body = validateFavoriteRequestBody(await readJsonBody<FavoriteRequestBody>(req));
         const entry = store.setFavorite(body);
         json(res, 200, { favorite: body.favorite, entry });
         return;
@@ -693,7 +762,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       }
 
       if (method === 'POST' && pathname === '/api/presets') {
-        const body = await readJsonBody<PresetRequestBody>(req);
+        const body = validatePresetRequestBody(await readJsonBody<PresetRequestBody>(req));
         const preset = store.savePreset(body);
         json(res, 200, { preset });
         return;
@@ -767,7 +836,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       }
 
       if (method === 'POST' && pathname === '/api/doctor') {
-        const body = await readJsonBody<DoctorRequestBody>(req, {} as DoctorRequestBody);
+        const body = validateDoctorRequestBody(await readJsonBody<DoctorRequestBody>(req, {} as DoctorRequestBody));
         const result = await doctor({ live: body.live ?? false, sessions: body.sessions ?? false });
         json(res, 200, result);
         return;
@@ -790,7 +859,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       }
 
       if (method === 'POST' && pathname === '/api/execute') {
-        const body = await readJsonBody<ExecuteRequestBody>(req);
+        const body = validateExecuteRequestBody(await readJsonBody<ExecuteRequestBody>(req));
         const command = commandMap.get(body.command);
         if (!command) {
           json(res, 404, { ok: false, error: `Unknown command: ${body.command}` });

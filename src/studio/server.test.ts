@@ -457,6 +457,107 @@ describe('startStudioServer', () => {
     expect(jobs.jobs).toEqual([]);
   });
 
+  it('rejects invalid mutation payloads before they reach persistence', async () => {
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'google',
+          name: 'trends',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      execute: vi.fn(),
+      doctor: vi.fn(async () => ({ ok: true, summary: 'healthy' })),
+    });
+
+    const invalidFavoriteResponse = await fetch(`${server.url}/api/favorites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'command',
+        targetId: 'google/trends',
+        favorite: 'yes',
+      }),
+    });
+    const invalidFavorite = await invalidFavoriteResponse.json() as { ok: boolean; error: string };
+
+    expect(invalidFavoriteResponse.status).toBe(400);
+    expect(invalidFavorite).toMatchObject({
+      ok: false,
+      error: 'Invalid favorite',
+    });
+
+    const invalidPresetResponse = await fetch(`${server.url}/api/presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'workbench',
+        name: 'Broken preset',
+        state: [],
+      }),
+    });
+    const invalidPreset = await invalidPresetResponse.json() as { ok: boolean; error: string };
+
+    expect(invalidPresetResponse.status).toBe(400);
+    expect(invalidPreset).toMatchObject({
+      ok: false,
+      error: 'Invalid state',
+    });
+
+    const invalidSnapshotResponse = await fetch(`${server.url}/api/snapshots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sourceKind: 'command',
+        sourceId: 'google/trends',
+        command: 'google/trends',
+        args: [],
+      }),
+    });
+    const invalidSnapshot = await invalidSnapshotResponse.json() as { ok: boolean; error: string };
+
+    expect(invalidSnapshotResponse.status).toBe(400);
+    expect(invalidSnapshot).toMatchObject({
+      ok: false,
+      error: 'Invalid args',
+    });
+
+    const invalidExecuteResponse = await fetch(`${server.url}/api/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        command: 'google/trends',
+        args: [],
+      }),
+    });
+    const invalidExecute = await invalidExecuteResponse.json() as { ok: boolean; error: string };
+
+    expect(invalidExecuteResponse.status).toBe(400);
+    expect(invalidExecute).toMatchObject({
+      ok: false,
+      error: 'Invalid args',
+    });
+
+    const favoritesResponse = await fetch(`${server.url}/api/favorites`);
+    const favorites = await favoritesResponse.json() as { entries: unknown[] };
+    expect(favorites.entries).toEqual([]);
+
+    const presetsResponse = await fetch(`${server.url}/api/presets`);
+    const presets = await presetsResponse.json() as { presets: unknown[] };
+    expect(presets.presets).toEqual([]);
+
+    const historyResponse = await fetch(`${server.url}/api/history`);
+    const history = await historyResponse.json() as { entries: unknown[] };
+    expect(history.entries).toEqual([]);
+
+    const snapshotsResponse = await fetch(`${server.url}/api/snapshots?sourceKind=command&sourceId=google/trends`);
+    const snapshots = await snapshotsResponse.json() as { entries: unknown[] };
+    expect(snapshots.entries).toEqual([]);
+  });
+
   it('returns 400 for malformed JSON request bodies', async () => {
     server = await startStudioServer({
       port: 0,
