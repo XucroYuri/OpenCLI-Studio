@@ -54,3 +54,14 @@
   tags: [vercel, deployment, serverless, frontend, devops]
   install:
     default: "npm install -g vercel"
+
+- name: yt-dlp
+  binary: yt-dlp
+  description: "yt-dlp — media downloader used by video download commands in OpenCLI"
+  homepage: "https://github.com/yt-dlp/yt-dlp"
+  tags: [download, media, video]
+  install:
+    mac: "brew install yt-dlp"
+    linux: "python3 -m pip install -U yt-dlp"
+    windows: "py -m pip install -U yt-dlp"
+    default: "python -m pip install -U yt-dlp"
