@@ -53,7 +53,7 @@ The frontend lives in `studio/` and is built with:
 - Vue Router
 - Pinia
 - Naive UI
-- ECharts
+- SVG-based chart utilities in `studio/src/lib/chart-layout.ts`
 
 Responsibilities:
 
@@ -157,5 +157,6 @@ The current foundation intentionally leaves room for deeper stages:
 The current continuation plan for the Studio branch lives at:
 
 - [docs/superpowers/plans/opencli-studio/2026-04-14-opencli-studio-next-phase-handoff.md](../superpowers/plans/opencli-studio/2026-04-14-opencli-studio-next-phase-handoff.md)
+- [docs/superpowers/plans/opencli-studio/2026-04-15-opencli-studio-upstream-sharing-cut-list.md](../superpowers/plans/opencli-studio/2026-04-15-opencli-studio-upstream-sharing-cut-list.md)
 
-If a future agent reopens this project, start with this document first and then inspect the most recent `feature/opencli-studio` commits.
+If a future agent reopens this project, start with this document, then read the latest handoff plan and the upstream-sharing cut list before inspecting recent `feature/opencli-studio` commits.
