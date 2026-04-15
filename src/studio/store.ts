@@ -77,6 +77,13 @@ function parseJson<T>(value: string | null): T {
   return JSON.parse(value) as T;
 }
 
+function normalizeJobIntervalMinutes(intervalMinutes: number): number {
+  if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+    throw new RangeError('Studio job intervalMinutes must be a positive number');
+  }
+  return intervalMinutes;
+}
+
 export class StudioStore {
   private readonly db: DatabaseSync;
 
@@ -361,8 +368,9 @@ export class StudioStore {
 
   saveJob(input: SaveStudioJobInput): StudioJobEntry {
     const timestamp = new Date().toISOString();
+    const intervalMinutes = normalizeJobIntervalMinutes(input.intervalMinutes);
     const nextRunAt = input.enabled
-      ? new Date(Date.now() + input.intervalMinutes * 60_000).toISOString()
+      ? new Date(Date.now() + intervalMinutes * 60_000).toISOString()
       : null;
 
     if (input.id) {
@@ -388,7 +396,7 @@ export class StudioStore {
         input.name,
         input.description ?? null,
         JSON.stringify(input.args ?? {}),
-        input.intervalMinutes,
+        intervalMinutes,
         input.enabled ? 1 : 0,
         nextRunAt,
         timestamp,
@@ -429,7 +437,7 @@ export class StudioStore {
       input.name,
       input.description ?? null,
       JSON.stringify(input.args ?? {}),
-      input.intervalMinutes,
+      intervalMinutes,
       input.enabled ? 1 : 0,
       'idle',
       null,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue';
+import { computed, defineAsyncComponent, h, ref, watch } from 'vue';
 import { NButton, NCard, NDataTable, NEmpty, NTabPane, NTabs, NTag, useMessage } from 'naive-ui';
 import { buildResultExports, type ResultExportArtifact } from '../lib/export';
 import { useStudioI18n } from '../lib/i18n';
@@ -22,6 +22,35 @@ const exportBundle = computed(() =>
     ? null
     : buildResultExports(props.title, props.result),
 );
+const activeTab = ref<'table' | 'chart' | 'json'>('json');
+
+function resolveDefaultTab(): 'table' | 'chart' | 'json' {
+  if (presentation.value.rows.length) return 'table';
+  if (presentation.value.chart) return 'chart';
+  return 'json';
+}
+
+watch(presentation, () => {
+  activeTab.value = resolveDefaultTab();
+}, { immediate: true });
+
+function isUrlLike(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return /^(https?:\/\/|www\.)/i.test(trimmed);
+}
+
+function normalizeUrl(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return JSON.stringify(value);
+}
 
 const columns = computed(() =>
   Object.keys(presentation.value.rows[0] ?? {}).map((key) => ({
@@ -29,6 +58,25 @@ const columns = computed(() =>
     key,
     ellipsis: {
       tooltip: true,
+    },
+    render: (row: Record<string, unknown>) => {
+      const value = row[key];
+      const text = formatCellValue(value);
+
+      if (isUrlLike(value)) {
+        return h(
+          'a',
+          {
+            href: normalizeUrl(String(value)),
+            target: '_blank',
+            rel: 'noreferrer noopener',
+            class: 'result-link',
+          },
+          text,
+        );
+      }
+
+      return h('span', { class: 'result-cell' }, text || '—');
     },
   })),
 );
@@ -85,13 +133,20 @@ function downloadArtifact(artifact: ResultExportArtifact): void {
       <div v-if="presentation.keyFacts.length" class="result-panel__facts">
         <div v-for="fact in presentation.keyFacts" :key="fact.label" class="result-panel__fact">
           <span>{{ fact.label }}</span>
-          <strong>{{ fact.value }}</strong>
+          <a
+            v-if="isUrlLike(fact.value)"
+            :href="normalizeUrl(fact.value)"
+            target="_blank"
+            rel="noreferrer noopener"
+            class="result-link result-link--fact"
+          >
+            {{ fact.value }}
+          </a>
+          <strong v-else>{{ fact.value }}</strong>
         </div>
       </div>
 
-      <chart-panel v-if="presentation.chart" :model="presentation.chart" />
-
-      <n-tabs type="line" animated class="result-panel__tabs">
+      <n-tabs v-model:value="activeTab" type="line" animated class="result-panel__tabs">
         <n-tab-pane v-if="presentation.rows.length" name="table" :tab="t('common.table')">
           <n-data-table
             size="small"
@@ -101,6 +156,9 @@ function downloadArtifact(artifact: ResultExportArtifact): void {
             scroll-x="900"
           />
         </n-tab-pane>
+        <n-tab-pane v-if="presentation.chart" name="chart" :tab="t('resultPanel.chart')">
+          <chart-panel :model="presentation.chart" />
+        </n-tab-pane>
         <n-tab-pane name="json" :tab="t('common.json')">
           <pre class="json-block">{{ JSON.stringify(result, null, 2) }}</pre>
         </n-tab-pane>
@@ -108,3 +166,27 @@ function downloadArtifact(artifact: ResultExportArtifact): void {
     </template>
   </n-card>
 </template>
+
+<style scoped>
+.result-link {
+  color: #60a5fa;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.result-link:hover {
+  text-decoration: underline;
+}
+
+.result-link--fact {
+  display: inline-block;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.result-cell {
+  color: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+</style>

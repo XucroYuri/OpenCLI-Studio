@@ -1,4 +1,4 @@
-import type { RegistryFilters } from './registry';
+import { normalizeSiteCategory, type RegistryFilters } from './registry';
 
 type QueryRecord = Record<string, unknown>;
 
@@ -16,7 +16,7 @@ export function parseRegistryQuery(query: QueryRecord): RegistryFilters {
     search: readString(query, 'q', ''),
     site: readString(query, 'site', 'all'),
     market: readString(query, 'market', 'all') as RegistryFilters['market'],
-    siteCategory: readString(query, 'siteCategory', 'all') as RegistryFilters['siteCategory'],
+    siteCategory: normalizeSiteCategory(readString(query, 'siteCategory', 'all')),
     surface: readString(query, 'surface', 'all') as RegistryFilters['surface'],
     mode: readString(query, 'mode', 'all') as RegistryFilters['mode'],
     capability: readString(query, 'capability', 'all') as RegistryFilters['capability'],
@@ -47,12 +47,20 @@ export function buildRegistryQuery(state: RegistryFilters): Record<string, strin
 
 export interface WorkbenchQueryState {
   command: string;
+  search: string;
+  market: RegistryFilters['market'];
+  siteCategory: RegistryFilters['siteCategory'];
+  site: string;
   advancedMode: boolean;
 }
 
 export function parseWorkbenchQuery(query: QueryRecord): WorkbenchQueryState {
   return {
     command: readString(query, 'command', ''),
+    search: readString(query, 'q', ''),
+    market: readString(query, 'market', 'all') as RegistryFilters['market'],
+    siteCategory: normalizeSiteCategory(readString(query, 'siteCategory', 'all')),
+    site: readString(query, 'site', ''),
     advancedMode: readBoolean(query, 'advanced'),
   };
 }
@@ -61,6 +69,10 @@ export function buildWorkbenchQuery(state: WorkbenchQueryState): Record<string, 
   const query: Record<string, string> = {};
 
   if (state.command) query.command = state.command;
+  if (state.search) query.q = state.search;
+  if (state.market !== 'all') query.market = state.market;
+  if (state.siteCategory !== 'all') query.siteCategory = state.siteCategory;
+  if (state.site) query.site = state.site;
   if (state.advancedMode) query.advanced = '1';
 
   return query;

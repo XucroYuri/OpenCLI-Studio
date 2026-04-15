@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
-import { RouterLink, useRoute, useRouter, type LocationQueryRaw } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import {
   NAlert,
   NButton,
@@ -8,7 +8,6 @@ import {
   NConfigProvider,
   NMessageProvider,
   NSpin,
-  NSwitch,
   darkTheme,
   type GlobalThemeOverrides,
 } from 'naive-ui';
@@ -18,7 +17,8 @@ import { useStudioStore } from '../stores/studio';
 const store = useStudioStore();
 const route = useRoute();
 const router = useRouter();
-const { locale, setLocale, t } = useStudioI18n();
+const { localeMode, setLocale, t } = useStudioI18n();
+const initialDoctorError = ref('');
 
 const navigation = computed(() => [
   { to: '/overview', label: t('app.nav.overview'), short: 'OV' },
@@ -26,20 +26,21 @@ const navigation = computed(() => [
   { to: '/workbench', label: t('app.nav.workbench'), short: 'WB' },
   { to: '/insights', label: t('app.nav.insights'), short: 'IS' },
   { to: '/ops', label: t('app.nav.ops'), short: 'OP' },
+  { to: '/about', label: t('app.nav.about'), short: 'AB' },
 ]);
 
 const activePath = computed(() => route.path);
+const showInitialDoctorCta = computed(() => store.needsInitialDoctor && !store.initializing);
 
-const advancedModeModel = computed({
-  get: () => store.advancedMode,
-  set: (value: boolean) => {
-    store.setAdvancedMode(value);
-    const nextQuery: LocationQueryRaw = { ...route.query };
-    if (value) nextQuery.advanced = '1';
-    else delete nextQuery.advanced;
-    void router.replace({ query: nextQuery });
-  },
-});
+async function startInitialDoctor(): Promise<void> {
+  initialDoctorError.value = '';
+  await router.push('/ops');
+  try {
+    await store.runDoctor({ live: true, sessions: true });
+  } catch (error) {
+    initialDoctorError.value = error instanceof Error ? error.message : String(error);
+  }
+}
 
 const darkOverrides: GlobalThemeOverrides = {
   common: {
@@ -105,8 +106,8 @@ onMounted(() => {
 
         <header class="studio-topbar">
           <div class="studio-topbar__brand">
-            <RouterLink to="/" class="studio-topbar__logo">{{ t('app.system.logoMark') }}</RouterLink>
-            <RouterLink to="/" class="studio-topbar__brand-title">{{ t('app.system.title') }}</RouterLink>
+            <RouterLink to="/overview" class="studio-topbar__logo">{{ t('app.system.logoMark') }}</RouterLink>
+            <RouterLink to="/overview" class="studio-topbar__brand-title">{{ t('app.system.title') }}</RouterLink>
           </div>
 
           <nav class="studio-topbar__menu">
@@ -122,15 +123,24 @@ onMounted(() => {
           </nav>
 
           <div class="studio-topbar__controls">
-            <span class="studio-topbar__switch-label">{{ t('app.shell.advancedShort') }}</span>
-            <n-switch v-model:value="advancedModeModel" />
-
+            <div v-if="showInitialDoctorCta" class="studio-topbar__setup">
+              <div class="studio-topbar__setup-copy">
+                <span class="studio-topbar__setup-text">{{ t('app.shell.initialDoctorPrompt') }}</span>
+                <span v-if="initialDoctorError" class="studio-topbar__setup-error">{{ initialDoctorError }}</span>
+              </div>
+              <n-button type="primary" size="small" :loading="store.runningDoctor" @click="startInitialDoctor()">
+                {{ t('app.shell.initialDoctorAction') }}
+              </n-button>
+            </div>
             <n-button-group>
-              <n-button size="small" :type="locale === 'en' ? 'primary' : 'default'" @click="setLocale('en')">
+              <n-button size="small" :type="localeMode === 'auto' ? 'primary' : 'default'" @click="setLocale('auto')">
+                {{ t('app.shell.auto') }}
+              </n-button>
+              <n-button size="small" :type="localeMode === 'en' ? 'primary' : 'default'" @click="setLocale('en')">
                 EN
               </n-button>
-              <n-button size="small" :type="locale === 'zh-CN' ? 'primary' : 'default'" @click="setLocale('zh-CN')">
-                中
+              <n-button size="small" :type="localeMode === 'zh-CN' ? 'primary' : 'default'" @click="setLocale('zh-CN')">
+                中文
               </n-button>
             </n-button-group>
           </div>

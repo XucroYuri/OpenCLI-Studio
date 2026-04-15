@@ -5,10 +5,16 @@ export const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'hero',
+      redirect: '/overview',
+    },
+    {
+      path: '/about',
+      name: 'about',
       component: () => import('./views/HeroView.vue'),
       meta: {
-        layout: 'hero',
+        layout: 'studio',
+        titleKey: 'routes.about.title',
+        descriptionKey: 'routes.about.description',
       },
     },
     {

@@ -140,4 +140,22 @@ describe('StudioStore', () => {
       store.close();
     }
   });
+
+  it('rejects non-positive snapshot job intervals', () => {
+    const store = new StudioStore(tempDir);
+    try {
+      expect(() => store.saveJob({
+        sourceKind: 'recipe',
+        sourceId: 'google-trends',
+        command: 'google/trends',
+        name: 'Invalid Google Trends Job',
+        args: { region: 'US' },
+        intervalMinutes: 0,
+        enabled: true,
+      })).toThrow('positive number');
+      expect(store.listJobs()).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
 });

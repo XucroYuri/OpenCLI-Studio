@@ -1,4 +1,4 @@
-import { buildResultPresentation } from './results';
+import { buildResultPresentation, extractPrimaryMetric } from './results';
 
 type MinimalSnapshot = {
   id: number;
@@ -21,10 +21,10 @@ export function buildSnapshotTimelineRows(entries: MinimalSnapshot[]): SnapshotT
     .sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt))
     .map((entry) => {
       const presentation = buildResultPresentation(entry.result);
-      const chart = presentation.chart;
-      const firstRow = chart?.rows[0] ?? null;
-      const labelKey = chart?.labelKey ?? null;
-      const numericKey = chart?.numericKeys[0] ?? null;
+      const firstRow = presentation.rows[0] ?? null;
+      const primaryMetric = extractPrimaryMetric(presentation.rows);
+      const labelKey = primaryMetric?.labelKey ?? null;
+      const numericKey = primaryMetric?.numericKey ?? null;
 
       return {
         snapshotId: entry.id,

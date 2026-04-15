@@ -27,6 +27,12 @@ describe('registry preset state helpers', () => {
 
     expect(readRegistryPresetState(buildRegistryPresetState(filters))).toEqual(filters);
   });
+
+  it('normalizes legacy site category aliases from saved presets', () => {
+    expect(readRegistryPresetState({
+      siteCategory: 'tools',
+    }).siteCategory).toBe('utility');
+  });
 });
 
 describe('workbench preset state helpers', () => {
@@ -34,10 +40,18 @@ describe('workbench preset state helpers', () => {
     expect(readWorkbenchPresetState(buildWorkbenchPresetState({
       command: 'google/trends',
       args: { region: 'US', limit: 10 },
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
       advancedMode: true,
     }))).toEqual({
       command: 'google/trends',
       args: { region: 'US', limit: 10 },
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
       advancedMode: true,
     });
   });

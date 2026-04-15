@@ -1,6 +1,43 @@
-import type { StudioCapability, StudioCommandItem, StudioMode, StudioRisk, StudioSurface } from '../types';
+import type { StudioCapability, StudioCommandItem, StudioMode, StudioRisk, StudioSiteCategory, StudioSurface } from '../types';
 
-export type SiteCategoryKey = 'social' | 'news' | 'finance' | 'ecommerce' | 'academic' | 'tools' | 'other';
+export type SiteCategoryKey = StudioSiteCategory;
+
+export const CREATOR_SITE_CATEGORY_ORDER: SiteCategoryKey[] = [
+  'video',
+  'social',
+  'ai-tool',
+  'media',
+  'knowledge',
+  'utility',
+  'news',
+  'commerce',
+  'finance',
+  'other',
+];
+
+const SITE_CATEGORY_ALIASES: Record<string, SiteCategoryKey> = {
+  social: 'social',
+  news: 'news',
+  commerce: 'commerce',
+  ecommerce: 'commerce',
+  finance: 'finance',
+  media: 'media',
+  knowledge: 'knowledge',
+  academic: 'knowledge',
+  video: 'video',
+  'ai-tool': 'ai-tool',
+  utility: 'utility',
+  tools: 'utility',
+  other: 'other',
+};
+
+const SITE_CATEGORY_SORT_PRIORITY: Record<string, number> = Object.fromEntries(
+  CREATOR_SITE_CATEGORY_ORDER.map((category, index) => [category, index]),
+) as Record<string, number>;
+
+SITE_CATEGORY_SORT_PRIORITY.ecommerce = SITE_CATEGORY_SORT_PRIORITY.commerce;
+SITE_CATEGORY_SORT_PRIORITY.academic = SITE_CATEGORY_SORT_PRIORITY.knowledge;
+SITE_CATEGORY_SORT_PRIORITY.tools = SITE_CATEGORY_SORT_PRIORITY.utility;
 
 export type RegistryPurpose =
   | 'discovery'
@@ -25,13 +62,100 @@ export interface RegistryFilters {
   advancedMode: boolean;
 }
 
+export function normalizeSiteCategory(
+  value: unknown,
+  fallback: SiteCategoryKey | 'all' = 'all',
+): SiteCategoryKey | 'all' {
+  if (typeof value !== 'string') return fallback;
+  if (value === 'all') return 'all';
+  return SITE_CATEGORY_ALIASES[value] ?? fallback;
+}
+
+function siteCategorySortRank(category: unknown): number {
+  const normalized = normalizeSiteCategory(category, 'other');
+  if (normalized === 'all') {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return SITE_CATEGORY_SORT_PRIORITY[normalized] ?? Number.MAX_SAFE_INTEGER;
+}
+
+type RegistryMarket = RegistryFilters['market'];
+
+function preferredMarketForLocale(locale?: string): Exclude<RegistryMarket, 'unknown' | 'all'> | null {
+  if (!locale) return null;
+  return locale === 'zh-CN' ? 'domestic' : 'international';
+}
+
+function marketSortRank(
+  market: RegistryMarket | string | undefined,
+  locale?: string,
+): number {
+  const preferred = preferredMarketForLocale(locale);
+  if (!preferred) return 0;
+  if (market === preferred) return 0;
+  if (market === 'unknown' || !market) return 2;
+  return 1;
+}
+
+export function sortByLocaleMarketPreference<T>(
+  items: T[],
+  locale: string | undefined,
+  resolveMarket: (item: T) => RegistryMarket | string | undefined,
+): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) =>
+      marketSortRank(resolveMarket(left.item), locale)
+      - marketSortRank(resolveMarket(right.item), locale)
+      || left.index - right.index)
+    .map(({ item }) => item);
+}
+
+export function sortSitesByDisplayPreference<T>(
+  items: T[],
+  locale: string | undefined,
+  options: {
+    resolveCategory: (item: T) => string | undefined,
+    resolveMarket: (item: T) => RegistryMarket | string | undefined,
+    resolvePopularity?: (item: T) => number | undefined,
+    resolveCommandCount?: (item: T) => number | undefined,
+  },
+): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const categoryDiff =
+        siteCategorySortRank(options.resolveCategory(left.item))
+        - siteCategorySortRank(options.resolveCategory(right.item));
+      if (categoryDiff !== 0) return categoryDiff;
+
+      const marketDiff =
+        marketSortRank(options.resolveMarket(left.item), locale)
+        - marketSortRank(options.resolveMarket(right.item), locale);
+      if (marketDiff !== 0) return marketDiff;
+
+      const leftPopularity = options.resolvePopularity?.(left.item) ?? Number.MAX_SAFE_INTEGER;
+      const rightPopularity = options.resolvePopularity?.(right.item) ?? Number.MAX_SAFE_INTEGER;
+      if (leftPopularity !== rightPopularity) {
+        return leftPopularity - rightPopularity;
+      }
+
+      const leftCount = options.resolveCommandCount?.(left.item) ?? 0;
+      const rightCount = options.resolveCommandCount?.(right.item) ?? 0;
+      if (leftCount !== rightCount) {
+        return rightCount - leftCount;
+      }
+
+      return left.index - right.index;
+    })
+    .map(({ item }) => item);
+}
+
 export function listWorkbenchCommands(
   commands: StudioCommandItem[],
   advancedMode: boolean,
 ): StudioCommandItem[] {
-  return commands
-    .filter((command) => advancedMode || command.meta.risk === 'safe')
-    .sort((left, right) => left.command.localeCompare(right.command));
+  return commands.filter((command) => advancedMode || command.meta.risk === 'safe');
 }
 
 export function filterRegistryCommands(
@@ -167,17 +291,23 @@ export function pickDefaultWorkbenchCommand(
   commands: StudioCommandItem[],
   preferredCommand?: string,
   advancedMode: boolean = false,
+  locale?: string,
 ): string {
   const availableCommands = listWorkbenchCommands(commands, advancedMode);
+  const orderedCommands = sortByLocaleMarketPreference(
+    availableCommands,
+    locale,
+    (command) => command.meta.market,
+  );
 
-  if (preferredCommand && availableCommands.some((command) => command.command === preferredCommand)) {
+  if (preferredCommand && orderedCommands.some((command) => command.command === preferredCommand)) {
     return preferredCommand;
   }
 
-  const fallback = availableCommands.find((command) =>
+  const fallback = orderedCommands.find((command) =>
     command.meta.risk === 'safe'
     && (command.meta.capability === 'discovery' || command.meta.capability === 'search'),
   );
 
-  return fallback?.command ?? availableCommands[0]?.command ?? '';
+  return fallback?.command ?? orderedCommands[0]?.command ?? '';
 }

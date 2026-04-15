@@ -19,6 +19,8 @@ describe('buildStudioPluginInventory', () => {
             mode: 'public',
             capability: 'discovery',
             risk: 'safe',
+            market: 'unknown',
+            siteCategory: 'utility',
             uiHints: {
               supportsLists: true,
               supportsDetails: false,

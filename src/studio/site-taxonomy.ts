@@ -15,18 +15,19 @@ export type StudioSiteCategory =
 
 export const DOMESTIC_SITES = new Set([
   '1688',
-  'band',
   'bilibili',
   'boss',
   'chaoxing',
   'cnki',
-  'coupang',
   'ctrip',
+  '36kr',
   'douban',
   'doubao',
   'doubao-app',
   'douyin',
+  'gitee',
   'hupu',
+  'jd',
   'jianyu',
   'linux-do',
   'jike',
@@ -41,6 +42,7 @@ export const DOMESTIC_SITES = new Set([
   'smzdm',
   'taobao',
   'tieba',
+  'v2ex',
   'weibo',
   'weixin',
   'weread',
@@ -54,9 +56,10 @@ export const DOMESTIC_SITES = new Set([
 ]);
 
 export const INTERNATIONAL_SITES = new Set([
-  '36kr',
+  'amazon',
   'apple-podcasts',
   'arxiv',
+  'band',
   'barchart',
   'bbc',
   'bloomberg',
@@ -64,10 +67,14 @@ export const INTERNATIONAL_SITES = new Set([
   'chatgpt',
   'chatgpt-app',
   'chatwise',
+  'codex',
+  'coupang',
+  'cursor',
   'dictionary',
   'discord-app',
   'devto',
-  'gitee',
+  'facebook',
+  'gemini',
   'google',
   'grok',
   'hackernews',
@@ -77,6 +84,7 @@ export const INTERNATIONAL_SITES = new Set([
   'linkedin',
   'lobsters',
   'medium',
+  'notebooklm',
   'notion',
   'paperreview',
   'pixiv',
@@ -89,8 +97,9 @@ export const INTERNATIONAL_SITES = new Set([
   'substack',
   'tiktok',
   'twitter',
-  'v2ex',
+  'uiverse',
   'web',
+  'wikipedia',
   'yahoo-finance',
   'yollomi',
   'youtube',
@@ -110,13 +119,14 @@ export const SITE_CATEGORY_OVERRIDES: Record<string, StudioSiteCategory> = {
   binance: 'finance',
   bloomberg: 'news',
   bluesky: 'social',
-  boss: 'commerce',
+  boss: 'utility',
   chaoxing: 'knowledge',
   chatgpt: 'ai-tool',
   'chatgpt-app': 'ai-tool',
   chatwise: 'ai-tool',
   cnki: 'knowledge',
-  ctrip: 'news',
+  codex: 'ai-tool',
+  ctrip: 'commerce',
   coupang: 'commerce',
   cursor: 'ai-tool',
   devto: 'knowledge',
@@ -136,6 +146,7 @@ export const SITE_CATEGORY_OVERRIDES: Record<string, StudioSiteCategory> = {
   hupu: 'social',
   imdb: 'media',
   instagram: 'social',
+  jd: 'commerce',
   jianyu: 'commerce',
   jike: 'social',
   jimeng: 'ai-tool',
@@ -147,7 +158,9 @@ export const SITE_CATEGORY_OVERRIDES: Record<string, StudioSiteCategory> = {
   maimai: 'social',
   medium: 'media',
   mubu: 'knowledge',
+  notebooklm: 'ai-tool',
   notion: 'utility',
+  ones: 'utility',
   paperreview: 'knowledge',
   pixiv: 'media',
   producthunt: 'news',
@@ -156,6 +169,7 @@ export const SITE_CATEGORY_OVERRIDES: Record<string, StudioSiteCategory> = {
   reuters: 'news',
   sinablog: 'news',
   sinafinance: 'finance',
+  slock: 'utility',
   smzdm: 'commerce',
   spotify: 'media',
   stackoverflow: 'knowledge',
@@ -165,11 +179,13 @@ export const SITE_CATEGORY_OVERRIDES: Record<string, StudioSiteCategory> = {
   tieba: 'social',
   tiktok: 'video',
   twitter: 'social',
+  uiverse: 'utility',
   v2ex: 'social',
   web: 'utility',
   weibo: 'social',
   weixin: 'social',
   weread: 'knowledge',
+  wikipedia: 'knowledge',
   xianyu: 'commerce',
   xiaoe: 'knowledge',
   xiaohongshu: 'video',
@@ -181,6 +197,143 @@ export const SITE_CATEGORY_OVERRIDES: Record<string, StudioSiteCategory> = {
   yuanbao: 'ai-tool',
   zhihu: 'social',
   zsxq: 'social',
+};
+
+function buildCreatorSitePriority(groups: string[][]): Record<string, number> {
+  const entries: Array<[string, number]> = [];
+  let nextPriority = 0;
+
+  for (const group of groups) {
+    for (const site of group) {
+      entries.push([site, nextPriority]);
+      nextPriority += 1;
+    }
+  }
+
+  return Object.fromEntries(entries);
+}
+
+// Prioritized for film / animation studio creators:
+// mainland publishing / inspiration platforms first, then creation tools,
+// then research/news, and finally low-relevance commerce / finance utilities.
+const CREATOR_SITE_PRIORITY_OVERRIDES: Record<string, number> = buildCreatorSitePriority([
+  [
+    'bilibili',
+    'xiaohongshu',
+    'douyin',
+    'weibo',
+    'zhihu',
+    'jike',
+    'douban',
+    'weixin',
+    'xiaoyuzhou',
+    'zsxq',
+    'tieba',
+    'hupu',
+  ],
+  [
+    'jimeng',
+    'doubao',
+    'doubao-app',
+    'yuanbao',
+    'quark',
+    'mubu',
+    'ones',
+    'weread',
+    'xiaoe',
+    'cnki',
+    'chaoxing',
+    'paperreview',
+    'gitee',
+    'linux-do',
+    'v2ex',
+    '36kr',
+    'maimai',
+  ],
+  [
+    'jd',
+    'taobao',
+    '1688',
+    'xianyu',
+    'smzdm',
+    'ke',
+    'jianyu',
+    'ctrip',
+    'sinafinance',
+    'xueqiu',
+  ],
+  [
+    'boss',
+    'youtube',
+    'pixiv',
+    'instagram',
+    'tiktok',
+    'twitter',
+    'reddit',
+    'imdb',
+    'spotify',
+    'apple-podcasts',
+    'substack',
+    'medium',
+    'bluesky',
+  ],
+  [
+    'chatgpt',
+    'chatgpt-app',
+    'gemini',
+    'grok',
+    'codex',
+    'cursor',
+    'chatwise',
+    'antigravity',
+    'yollomi',
+    'notebooklm',
+    'notion',
+    'hf',
+    'uiverse',
+  ],
+  [
+    'google',
+    'reuters',
+    'bbc',
+    'bloomberg',
+    'hackernews',
+    'producthunt',
+    'devto',
+    'lobsters',
+    'stackoverflow',
+    'arxiv',
+    'wikipedia',
+    'dictionary',
+    'lesswrong',
+  ],
+  [
+    'discord-app',
+    'facebook',
+    'linkedin',
+    'web',
+    'steam',
+    'amazon',
+    'coupang',
+    'band',
+    'yahoo-finance',
+    'barchart',
+    'binance',
+    'slock',
+  ],
+]);
+
+const CREATOR_CATEGORY_PRIORITY: Record<StudioSiteCategory, number> = {
+  video: 0,
+  social: 1,
+  'ai-tool': 2,
+  media: 3,
+  knowledge: 4,
+  utility: 5,
+  news: 6,
+  commerce: 8,
+  finance: 9,
+  other: 10,
 };
 
 export const CATEGORY_KEYWORDS: Record<StudioSiteCategory, string[]> = {
@@ -327,6 +480,26 @@ export function inferSiteCategory(site: string, cmd: CliCommand): StudioSiteCate
     }
   }
   return 'other';
+}
+
+export function getCreatorSitePriority(input: {
+  site: string;
+  market?: StudioMarket;
+  category?: StudioSiteCategory;
+}): number {
+  const market = input.market ?? 'unknown';
+  const category = input.category ?? 'other';
+  const marketBase =
+    market === 'domestic'
+      ? 0
+      : market === 'international'
+        ? 1000
+        : 2000;
+  const explicit = CREATOR_SITE_PRIORITY_OVERRIDES[input.site];
+  if (explicit !== undefined) {
+    return marketBase + explicit;
+  }
+  return marketBase + 500 + (CREATOR_CATEGORY_PRIORITY[category] ?? CREATOR_CATEGORY_PRIORITY.other);
 }
 
 export function buildCommandTagCounts(commands: CliCommand[]): Record<string, number> {

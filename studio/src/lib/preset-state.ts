@@ -1,4 +1,4 @@
-import type { RegistryFilters } from './registry';
+import { normalizeSiteCategory, type RegistryFilters } from './registry';
 
 function readString(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.length > 0 ? value : fallback;
@@ -35,7 +35,7 @@ export function readRegistryPresetState(state: Record<string, unknown>): Registr
     search: readString(state.search, ''),
     site: readString(state.site, 'all'),
     market: readString(state.market, 'all') as RegistryFilters['market'],
-    siteCategory: readString(state.siteCategory, 'all') as RegistryFilters['siteCategory'],
+    siteCategory: normalizeSiteCategory(readString(state.siteCategory, 'all')),
     surface: readString(state.surface, 'all') as RegistryFilters['surface'],
     mode: readString(state.mode, 'all') as RegistryFilters['mode'],
     capability: readString(state.capability, 'all') as RegistryFilters['capability'],
@@ -49,11 +49,19 @@ export function readRegistryPresetState(state: Record<string, unknown>): Registr
 export function buildWorkbenchPresetState(input: {
   command: string;
   args: Record<string, unknown>;
+  search?: string;
+  market?: RegistryFilters['market'];
+  siteCategory?: RegistryFilters['siteCategory'];
+  site?: string;
   advancedMode: boolean;
 }): Record<string, unknown> {
   return {
     command: input.command,
     args: input.args,
+    search: input.search ?? '',
+    market: input.market ?? 'all',
+    siteCategory: input.siteCategory ?? 'all',
+    site: input.site ?? '',
     advancedMode: input.advancedMode,
   };
 }
@@ -61,11 +69,19 @@ export function buildWorkbenchPresetState(input: {
 export function readWorkbenchPresetState(state: Record<string, unknown>): {
   command: string;
   args: Record<string, unknown>;
+  search: string;
+  market: RegistryFilters['market'];
+  siteCategory: RegistryFilters['siteCategory'];
+  site: string;
   advancedMode: boolean;
 } {
   return {
     command: readString(state.command, ''),
     args: readRecord(state.args),
+    search: readString(state.search, ''),
+    market: readString(state.market, 'all') as RegistryFilters['market'],
+    siteCategory: normalizeSiteCategory(readString(state.siteCategory, 'all')),
+    site: readString(state.site, ''),
     advancedMode: readBoolean(state.advancedMode, false),
   };
 }

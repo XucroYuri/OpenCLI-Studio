@@ -36,6 +36,12 @@ describe('parseRegistryQuery', () => {
       advancedMode: true,
     });
   });
+
+  it('normalizes legacy site category aliases from saved links', () => {
+    expect(parseRegistryQuery({
+      siteCategory: 'ecommerce',
+    }).siteCategory).toBe('commerce');
+  });
 });
 
 describe('buildRegistryQuery', () => {
@@ -72,11 +78,19 @@ describe('workbench route helpers', () => {
       advanced: '1',
     })).toEqual({
       command: 'google/trends',
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
       advancedMode: true,
     });
 
     expect(buildWorkbenchQuery({
       command: 'google/trends',
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
       advancedMode: false,
     })).toEqual({
       command: 'google/trends',

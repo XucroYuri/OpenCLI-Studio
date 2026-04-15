@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useStudioI18n } from '../lib/i18n';
 
@@ -15,14 +15,16 @@ const chartData = [
   [65, 45], [80, 60], [55, 70], [90, 50], [75, 85], [60, 40], [95, 72],
 ];
 
-const logEntries = [
-  { cmd: 'weibo trending',    status: 'success' as const, time: '14:32', dur: '1.2s' },
-  { cmd: 'zhihu hot',         status: 'success' as const, time: '14:28', dur: '0.8s' },
-  { cmd: 'github search',     status: 'warning' as const, time: '14:15', dur: '3.4s' },
-  { cmd: 'douyin trending',   status: 'success' as const, time: '14:02', dur: '1.5s' },
-  { cmd: 'bilibili ranking',  status: 'error'   as const, time: '13:51', dur: '5.1s' },
-  { cmd: 'xiaohongshu feed',  status: 'success' as const, time: '13:44', dur: '2.0s' },
-];
+const logEntries = computed(() => [
+  { cmd: t('hero.dashboard.logEntryWeibo'), status: 'success' as const, time: '14:32', dur: '1.2s' },
+  { cmd: t('hero.dashboard.logEntryZhihu'), status: 'success' as const, time: '14:28', dur: '0.8s' },
+  { cmd: t('hero.dashboard.logEntryGithub'), status: 'warning' as const, time: '14:15', dur: '3.4s' },
+  { cmd: t('hero.dashboard.logEntryDouyin'), status: 'success' as const, time: '14:02', dur: '1.5s' },
+  { cmd: t('hero.dashboard.logEntryBilibili'), status: 'error' as const, time: '13:51', dur: '5.1s' },
+  { cmd: t('hero.dashboard.logEntryXiaohongshu'), status: 'success' as const, time: '13:44', dur: '2.0s' },
+]);
+const workspaceSample = computed(() => t('hero.dashboard.configWorkspaceValue'));
+const browserSample = computed(() => t('hero.dashboard.configBrowserValue'));
 
 const MAX_ANGLE = 8;
 
@@ -58,6 +60,12 @@ function handleMouseLeave(): void {
   const el = mockupEl.value;
   if (!el) return;
   el.style.transform = 'rotateX(0deg) rotateY(0deg)';
+}
+
+function statusLabel(status: 'success' | 'warning' | 'error'): string {
+  if (status === 'success') return t('common.statusSuccess');
+  if (status === 'warning') return t('common.statusWarning');
+  return t('common.statusError');
 }
 </script>
 
@@ -98,7 +106,7 @@ function handleMouseLeave(): void {
           {{ t('hero.primaryButton') }}
         </RouterLink>
         <a
-          href="https://github.com/jackwener/opencli"
+          href="https://github.com/XucroYuri/OpenCLI-Studio"
           target="_blank"
           rel="noopener"
           class="hero-btn hero-btn--secondary"
@@ -181,7 +189,7 @@ function handleMouseLeave(): void {
                   <span class="log-status-dot" :class="`log-status-dot--${entry.status}`" />
                   {{ entry.cmd }}
                 </span>
-                <span>{{ entry.status }}</span>
+                <span>{{ statusLabel(entry.status) }}</span>
                 <span>{{ entry.time }}</span>
                 <span>{{ entry.dur }}</span>
               </div>
@@ -192,19 +200,15 @@ function handleMouseLeave(): void {
             <span class="config-section-title">{{ t('hero.dashboard.configTitle') }}</span>
             <div class="config-field">
               <span class="config-field__label">{{ t('hero.dashboard.configWorkspace') }}</span>
-              <div class="config-field__input">~/projects/my-app</div>
+              <div class="config-field__input">{{ workspaceSample }}</div>
             </div>
             <div class="config-field">
               <span class="config-field__label">{{ t('hero.dashboard.configBrowser') }}</span>
-              <div class="config-field__input">Chrome 126 — connected</div>
+              <div class="config-field__input">{{ browserSample }}</div>
             </div>
             <div class="config-toggle">
               <span class="config-toggle__label">{{ t('hero.dashboard.configAutoRepair') }}</span>
               <span class="config-toggle__switch config-toggle__switch--on" />
-            </div>
-            <div class="config-toggle">
-              <span class="config-toggle__label">{{ t('hero.dashboard.configAdvanced') }}</span>
-              <span class="config-toggle__switch config-toggle__switch--off" />
             </div>
           </div>
         </div>
