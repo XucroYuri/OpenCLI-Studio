@@ -1,29 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { NButton, NCard, NEmpty, NSwitch, NTag, useMessage } from 'naive-ui';
+import { NButton, NCard, NCollapse, NCollapseItem, NEmpty, NSwitch, NTag, useMessage } from 'naive-ui';
+import { installExternalCli as requestInstallExternalCli } from '../lib/api';
 import { useStudioI18n } from '../lib/i18n';
-import { buildDoctorStatusRowsWithLabel, buildOpsMetrics, type OpsTone } from '../lib/ops';
+import { buildDoctorStatusRowsWithLabel, type OpsTone } from '../lib/ops';
+import { buildSiteAccessSummary, type CommandReadinessAction } from '../lib/readiness';
+import { buildStatusAriaLabel, buildStatusTone, type StatusToneState } from '../lib/status-tone';
 import { useStudioStore } from '../stores/studio';
-import type { StudioExternalCliEntry, StudioPluginEntry } from '../types';
+import type { StudioCommandItem, StudioExternalCliEntry, StudioPluginEntry } from '../types';
 
 const store = useStudioStore();
 const router = useRouter();
 const message = useMessage();
-const { t } = useStudioI18n();
+const { locale, t } = useStudioI18n();
 
 const liveMode = ref(true);
 const includeSessions = ref(true);
-
-const metrics = computed(() =>
-  buildOpsMetrics({
-    env: store.env,
-    plugins: store.plugins,
-    externalClis: store.externalClis,
-    doctor: store.doctor,
-    t,
-  }),
-);
+const installingExternalName = ref<string | null>(null);
 
 const doctorRows = computed(() => buildDoctorStatusRowsWithLabel(store.doctor, t));
 const sessions = computed(() => store.doctor?.sessions ?? []);
@@ -33,6 +27,68 @@ const unresolvedPluginCount = computed(() =>
 const missingExternalCount = computed(() =>
   store.externalClis.filter((entry) => !entry.installed).length,
 );
+const browserSites = computed(() =>
+  store.siteGroups
+    .filter((group) => group.commands.some((command) => command.meta.mode === 'browser'))
+    .slice(0, 12),
+);
+type StartStatusCard = {
+  key: string;
+  label: string;
+  value: string;
+  tone: OpsTone;
+};
+const siteStatusCards = computed(() =>
+  browserSites.value.map((group) => ({
+    site: group.site,
+    displayName: store.getSiteDisplayName(group.site, locale.value),
+    summary: buildSiteAccessSummary({
+      siteAccess: store.getSiteAccess(group.site),
+      siteLabel: store.getSiteDisplayName(group.site, locale.value),
+      t,
+    }),
+    firstCommand: group.commands[0]?.command ?? '',
+  })),
+);
+const missingExternals = computed(() =>
+  store.externalClis.filter((entry) => !entry.installed),
+);
+const startStatusCards = computed<StartStatusCard[]>(() => [
+  {
+    key: 'doctor',
+    label: t('ops.startStatusReady'),
+    value: store.doctor
+      ? (store.doctor.issues?.length ? t('ops.startStatusIssues', { count: store.doctor.issues.length }) : t('ops.startStatusHealthy'))
+      : t('ops.startStatusPending'),
+    tone: store.doctor ? (store.doctor.issues?.length ? 'warning' : 'success') : 'info',
+  },
+  {
+    key: 'browser',
+    label: t('ops.startStatusBrowser'),
+    value: t('ops.startStatusBrowserValue', { count: store.env?.browserCommandCount ?? 0 }),
+    tone: 'info' as const,
+  },
+  {
+    key: 'signin',
+    label: t('ops.startStatusSignIn'),
+    value: t('ops.startStatusSignInValue', {
+      count: siteStatusCards.value.filter((item) => item.summary?.tone === 'warning' || item.summary?.tone === 'error').length,
+    }),
+    tone: siteStatusCards.value.some((item) => item.summary?.tone === 'warning' || item.summary?.tone === 'error') ? 'warning' : 'success',
+  },
+  {
+    key: 'external',
+    label: t('ops.startStatusExternal'),
+    value: missingExternalCount.value
+      ? t('ops.startStatusExternalMissing', { count: missingExternalCount.value })
+      : t('ops.startStatusExternalReady'),
+    tone: missingExternalCount.value ? 'warning' : 'success',
+  },
+]);
+
+watch(browserSites, (groups) => {
+  void store.ensureSiteAccess(groups.map((group) => group.site));
+}, { immediate: true });
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -49,6 +105,28 @@ function toneLabel(tone: OpsTone | string): string {
   if (tone === 'error') return t('common.statusError');
   if (tone === 'info') return t('common.statusInfo');
   return t('common.statusNeutral');
+}
+
+function statusSurfaceClasses(status: StatusToneState | null, input?: { prominent?: boolean }): string[] {
+  if (!status) return [];
+  return [
+    'status-surface',
+    `status-surface--${status.tone}`,
+    ...(input?.prominent ? ['status-surface--prominent'] : []),
+  ];
+}
+
+function toneStatus(tone: OpsTone, label: string, detail: string | null = null): StatusToneState {
+  return {
+    tone: tone === 'default' ? 'info' : tone,
+    label,
+    detail,
+    blocking: tone === 'error',
+  };
+}
+
+function statusAriaLabel(status: StatusToneState, subject: string): string {
+  return buildStatusAriaLabel(status, subject);
 }
 
 function pluginSourceType(plugin: StudioPluginEntry): 'default' | 'info' | 'warning' {
@@ -78,6 +156,10 @@ function formatIdleTime(ms: number): string {
 
 function pluginCommands(plugin: StudioPluginEntry) {
   return store.registry.commands.filter((command) => command.site === plugin.name);
+}
+
+function findCommand(commandName: string): StudioCommandItem | null {
+  return store.registry.commands.find((item) => item.command === commandName) ?? null;
 }
 
 function pluginSourceKindLabel(value: StudioPluginEntry['sourceKind']): string {
@@ -120,6 +202,7 @@ async function copyInstallCommand(command: string): Promise<void> {
 async function refreshInventory(): Promise<void> {
   try {
     await store.refreshOpsInventory();
+    await store.ensureSiteAccess(browserSites.value.map((group) => group.site), true);
     message.success(t('ops.inventoryRefreshed'));
   } catch (error) {
     message.error(getErrorMessage(error));
@@ -132,60 +215,138 @@ async function runDoctor(): Promise<void> {
       live: liveMode.value,
       sessions: includeSessions.value,
     });
+    await store.ensureSiteAccess(browserSites.value.map((group) => group.site), true);
     message.success(t('ops.doctorCompleted'));
   } catch (error) {
     message.error(getErrorMessage(error));
+  }
+}
+
+async function refreshSiteAccess(site: string): Promise<void> {
+  try {
+    await store.ensureSiteAccess([site], true);
+  } catch (error) {
+    message.error(getErrorMessage(error));
+  }
+}
+
+async function handleReadinessAction(action: CommandReadinessAction, site?: string): Promise<void> {
+  try {
+    if (action.type === 'run-doctor') {
+      await runDoctor();
+      return;
+    }
+
+    if (action.type === 'open-ops') {
+      return;
+    }
+
+    if (action.type === 'open-command' && action.command) {
+      openWorkbench(action.command);
+      return;
+    }
+
+    if (action.type === 'run-command' && action.command) {
+      await store.runCommand(action.command, action.args ?? {});
+      await store.refreshHistory();
+      const nextCommand = findCommand(action.command);
+      await store.ensureSiteAccess([site || nextCommand?.site || ''].filter(Boolean), true);
+      message.success(t('readiness.actionCompleted'));
+      return;
+    }
+
+    if (action.type === 'install-external' && action.externalName) {
+      await requestInstallExternalCli(action.externalName);
+      await store.refreshOpsInventory();
+      message.success(t('readiness.installSuccess', { value: action.externalName }));
+      return;
+    }
+
+    if (action.type === 'open-url' && action.url) {
+      window.open(action.url, '_blank', 'noopener,noreferrer');
+    }
+  } catch (error) {
+    message.error(getErrorMessage(error));
+  }
+}
+
+async function installExternal(entry: StudioExternalCliEntry): Promise<void> {
+  if (entry.installed) return;
+  if (!entry.installAvailable) {
+    if (entry.homepage) {
+      window.open(entry.homepage, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    message.error(t('ops.installUnavailable'));
+    return;
+  }
+
+  installingExternalName.value = entry.name;
+  try {
+    await requestInstallExternalCli(entry.name);
+    await store.refreshOpsInventory();
+    message.success(t('ops.installSuccess', { value: entry.name }));
+  } catch (error) {
+    message.error(getErrorMessage(error));
+  } finally {
+    installingExternalName.value = null;
   }
 }
 </script>
 
 <template>
   <section class="page-grid">
-    <div class="page-inline-header">
+    <div class="page-inline-header page-inline-header--compact">
       <h1 class="gradient-title">{{ t('routes.ops.title') }}</h1>
-      <p class="page-inline-header__desc">{{ t('routes.ops.description') }}</p>
     </div>
 
-    <n-card class="hero-card glass-card">
-      <div class="hero-card__copy">
-        <div class="eyebrow">{{ t('ops.eyebrow') }}</div>
-        <h3 class="gradient-title">{{ t('ops.title') }}</h3>
-        <p>{{ t('ops.description') }}</p>
-      </div>
-      <div class="card-actions">
-        <label class="switch-inline topbar__switch">
-          <span>{{ t('ops.liveProbe') }}</span>
-          <n-switch v-model:value="liveMode" />
-        </label>
-        <label class="switch-inline topbar__switch">
-          <span>{{ t('ops.includeSessions') }}</span>
-          <n-switch v-model:value="includeSessions" />
-        </label>
-        <n-button tertiary :loading="store.initializing" @click="refreshInventory()">{{ t('ops.refreshInventory') }}</n-button>
-        <n-button type="primary" :loading="store.runningDoctor" @click="runDoctor()">{{ t('ops.runDoctor') }}</n-button>
-      </div>
-      <div class="metrics-grid">
-        <div v-for="metric in metrics" :key="metric.label" class="metric-tile">
-          <span>{{ metric.label }}</span>
-          <strong>{{ metric.value }}</strong>
-          <n-tag size="small" :type="toneToTagType(metric.tone)">{{ toneLabel(metric.tone) }}</n-tag>
+    <n-card class="glass-card ops-toolbar-card">
+      <div class="ops-toolbar">
+        <div class="panel-note ops-toolbar__hint">{{ t('ops.summary') }}</div>
+        <div class="card-actions ops-toolbar__actions">
+          <label class="switch-inline ops-toolbar__switch">
+            <span>{{ t('ops.liveProbe') }}</span>
+            <n-switch v-model:value="liveMode" />
+          </label>
+          <label class="switch-inline ops-toolbar__switch">
+            <span>{{ t('ops.includeSessions') }}</span>
+            <n-switch v-model:value="includeSessions" />
+          </label>
+          <n-button tertiary :loading="store.initializing" @click="refreshInventory()">{{ t('ops.refreshInventory') }}</n-button>
+          <n-button type="primary" :loading="store.runningDoctor" @click="runDoctor()">{{ t('ops.runDoctor') }}</n-button>
         </div>
       </div>
     </n-card>
 
-    <div class="split-grid">
+    <div class="split-grid checks-grid">
+      <n-card :title="t('ops.startStatusTitle')" class="glass-card">
+        <div class="panel-note">{{ t('ops.startStatusDescription') }}</div>
+        <div class="checks-start-grid">
+          <div
+            v-for="item in startStatusCards"
+            :key="item.key"
+            class="metric-tile checks-start-tile"
+            :class="statusSurfaceClasses(toneStatus(item.tone, item.value))"
+          >
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+            <n-tag size="small" :type="toneToTagType(item.tone)">{{ toneLabel(item.tone) }}</n-tag>
+          </div>
+        </div>
+      </n-card>
+
       <n-card :title="t('ops.bridgeHealth')" class="glass-card">
         <div class="panel-note">{{ t('ops.bridgeSummary') }}</div>
-
-        <div class="ops-status-grid">
+        <div v-if="store.doctor" class="ops-status-grid">
           <div v-for="row in doctorRows" :key="row.label" class="kv-item">
             <span>{{ row.label }}</span>
             <strong>{{ row.value }}</strong>
             <n-tag size="small" :type="toneToTagType(row.tone)">{{ toneLabel(row.tone) }}</n-tag>
           </div>
         </div>
+        <n-empty v-else :description="t('ops.doctorEmpty')" />
 
-        <div v-if="store.env" class="inventory-notes">
+        <div v-if="store.env" class="inventory-notes checks-meta-notes">
           <div class="inventory-note">
             <span>{{ t('ops.platform') }}</span>
             <strong>{{ store.env.platform }}</strong>
@@ -205,172 +366,303 @@ async function runDoctor(): Promise<void> {
             {{ issue }}
           </li>
         </ol>
-
-        <n-empty v-if="!store.doctor" :description="t('ops.doctorEmpty')" />
-      </n-card>
-
-      <n-card :title="t('ops.activeSessions')" class="glass-card">
-        <div class="panel-note">{{ t('ops.sessionsSummary') }}</div>
-
-        <div v-if="sessions.length" class="inventory-list">
-          <article v-for="session in sessions" :key="`${session.workspace}:${session.windowId}`" class="inventory-item">
-            <div class="inventory-item__header">
-              <div>
-                <strong>{{ session.workspace }}</strong>
-                <p>{{ t('ops.windowLabel', { value: session.windowId }) }}</p>
-              </div>
-              <div class="inventory-item__meta">
-                <n-tag size="small" type="info">{{ t('ops.tabs', { value: session.tabCount }) }}</n-tag>
-                <n-tag size="small" type="warning">{{ formatIdleTime(session.idleMsRemaining) }}</n-tag>
-              </div>
-            </div>
-          </article>
-        </div>
-        <n-empty v-else :description="t('ops.noSessions')" />
       </n-card>
     </div>
 
-    <n-card :title="t('ops.pluginInventory')" class="glass-card">
-      <div class="card-actions card-actions--between">
-        <div class="panel-note">
-          {{
-            unresolvedPluginCount
-              ? t('ops.pluginUnresolved', { count: unresolvedPluginCount })
-              : t('ops.pluginResolved')
-          }}
+    <div class="split-grid checks-grid">
+      <n-card :title="t('ops.siteMatrixTitle')" class="glass-card">
+        <div class="card-actions card-actions--between">
+          <div class="panel-note">{{ t('ops.signInMatrixSummary') }}</div>
+          <n-button size="small" tertiary @click="store.ensureSiteAccess(browserSites.map((group) => group.site), true)">
+            {{ t('ops.refreshSiteMatrix') }}
+          </n-button>
         </div>
-        <n-tag size="small" :type="unresolvedPluginCount ? 'warning' : 'success'">{{ t('ops.installedCount', { count: store.plugins.length }) }}</n-tag>
-      </div>
 
-      <div v-if="store.plugins.length" class="inventory-list">
-        <article v-for="plugin in store.plugins" :key="plugin.name" class="inventory-item">
-          <div class="card-actions">
-            <n-button size="small" tertiary @click="openOpsRegistry(plugin.name, 'plugin')">{{ t('ops.openRegistrySlice') }}</n-button>
-            <n-button
-              v-if="pluginCommands(plugin).length"
-              size="small"
-              tertiary
-              @click="openWorkbench(pluginCommands(plugin)[0].command)"
-            >
-              {{ pluginCommands(plugin)[0].command }}
-            </n-button>
-          </div>
-
-          <div class="inventory-item__header">
-            <div>
-              <strong>{{ plugin.name }}</strong>
-              <p>{{ plugin.description || t('common.noDescription') }}</p>
-            </div>
-            <div class="inventory-item__meta">
-              <n-tag size="small" :type="pluginSourceType(plugin)">{{ pluginSourceKindLabel(plugin.sourceKind) }}</n-tag>
-              <n-tag size="small" :type="pluginCoverageType(plugin)">
-                {{ t('ops.registeredCoverage', { registered: plugin.registeredCommandCount, declared: plugin.declaredCommandCount }) }}
+        <div v-if="siteStatusCards.length" class="checks-site-grid">
+          <article
+            v-for="item in siteStatusCards"
+            :key="item.site"
+            class="inventory-item checks-site-card"
+            :class="statusSurfaceClasses(buildStatusTone({ availability: item.summary, risk: 'safe', t }), { prominent: true })"
+            :aria-label="statusAriaLabel(buildStatusTone({ availability: item.summary, risk: 'safe', t }), item.displayName)"
+          >
+            <div class="inventory-item__header">
+              <div class="checks-site-card__headline">
+                <div>
+                  <strong>{{ item.displayName }}</strong>
+                  <p>
+                    {{
+                      store.isSiteAccessLoading(item.site)
+                        ? t('ops.sitePending')
+                        : item.summary?.label || t('ops.sitePending')
+                    }}
+                  </p>
+                </div>
+              </div>
+              <n-tag
+                size="small"
+                :type="toneToTagType((item.summary?.tone || 'info') as OpsTone)"
+              >
+                {{ toneLabel(item.summary?.tone || 'info') }}
               </n-tag>
             </div>
-          </div>
 
-          <div class="chip-cloud">
-            <span v-for="commandName in plugin.commands" :key="`${plugin.name}:${commandName}`" class="chip chip--small">
-              {{ commandName }}
-            </span>
-            <span v-if="plugin.monorepoName" class="chip chip--small">{{ t('ops.monorepo', { value: plugin.monorepoName }) }}</span>
-          </div>
+            <p class="checks-site-card__detail">
+              {{
+                store.isSiteAccessLoading(item.site)
+                  ? t('ops.sitePending')
+                  : item.summary?.detail || t('ops.sitePending')
+              }}
+            </p>
 
-          <div class="inventory-notes">
-            <div class="inventory-note">
-              <span>{{ t('ops.version') }}</span>
-              <strong>{{ plugin.version || t('common.unknown') }}</strong>
+            <div class="card-actions">
+              <n-button
+                v-if="item.summary?.action"
+                size="small"
+                type="primary"
+                @click="handleReadinessAction(item.summary.action, item.site)"
+              >
+                {{ item.summary.action.label }}
+              </n-button>
+              <n-button size="small" tertiary @click="refreshSiteAccess(item.site)">{{ t('ops.refreshSite') }}</n-button>
+              <n-button size="small" tertiary @click="openOpsRegistry(item.site)">{{ t('ops.openRegistrySlice') }}</n-button>
             </div>
-            <div class="inventory-note">
-              <span>{{ t('ops.installed') }}</span>
-              <strong>{{ formatDateTime(plugin.installedAt) }}</strong>
-            </div>
-            <div class="inventory-note inventory-note--wide">
-              <span>{{ t('ops.source') }}</span>
-              <strong>{{ plugin.source || t('common.unknown') }}</strong>
-            </div>
-            <div class="inventory-note inventory-note--wide">
-              <span>{{ t('ops.path') }}</span>
-              <strong>{{ plugin.path }}</strong>
-            </div>
-          </div>
-        </article>
-      </div>
-      <n-empty v-else :description="t('ops.noPlugins')" />
-    </n-card>
-
-    <n-card :title="t('ops.externalInventory')" class="glass-card">
-      <div class="card-actions card-actions--between">
-        <div class="panel-note">
-          {{
-            missingExternalCount
-              ? t('ops.missingExternal', { count: missingExternalCount })
-              : t('ops.externalResolved')
-          }}
+          </article>
         </div>
-        <n-tag size="small" :type="missingExternalCount ? 'warning' : 'success'">
-          {{ t('ops.registeredCount', { count: store.externalClis.length }) }}
-        </n-tag>
-      </div>
+        <n-empty v-else :description="t('ops.signInMatrixEmpty')" />
+      </n-card>
 
-      <div v-if="store.externalClis.length" class="inventory-list">
-        <article v-for="entry in store.externalClis" :key="entry.name" class="inventory-item">
-          <div class="inventory-item__header">
-            <div>
-              <strong>{{ entry.name }}</strong>
-              <p>{{ entry.description || t('common.noDescription') }}</p>
+      <n-card :title="t('ops.dependencyFixTitle')" class="glass-card">
+        <div class="card-actions card-actions--between">
+          <div class="panel-note">
+            {{
+              missingExternalCount
+                ? t('ops.missingExternal', { count: missingExternalCount })
+                : t('ops.noMissingDependencies')
+            }}
+          </div>
+          <n-tag size="small" :type="missingExternalCount ? 'warning' : 'success'">
+            {{ t('ops.registeredCount', { count: store.externalClis.length }) }}
+          </n-tag>
+        </div>
+
+        <div v-if="missingExternals.length" class="inventory-list">
+          <article v-for="entry in missingExternals" :key="entry.name" class="inventory-item">
+            <div class="inventory-item__header">
+              <div>
+                <strong>{{ entry.name }}</strong>
+                <p>{{ entry.description || t('common.noDescription') }}</p>
+              </div>
+              <div class="inventory-item__meta">
+                <n-tag size="small" :type="externalInstallType(entry)">{{ t('ops.missingState') }}</n-tag>
+                <n-tag size="small" :type="entry.installAvailable ? 'info' : 'default'">
+                  {{ entry.installAvailable ? t('ops.autoInstallHint') : t('ops.manualInstall') }}
+                </n-tag>
+              </div>
             </div>
-            <div class="inventory-item__meta">
-              <n-tag size="small" :type="externalInstallType(entry)">{{ entry.installed ? t('ops.installedState') : t('ops.missingState') }}</n-tag>
-              <n-tag size="small" :type="entry.installAvailable ? 'info' : 'default'">
-                {{ entry.installAvailable ? t('ops.autoInstallHint') : t('ops.manualInstall') }}
-              </n-tag>
+
+            <div class="inventory-notes">
+              <div class="inventory-note inventory-note--wide">
+                <span>{{ t('ops.installGuidance') }}</span>
+                <strong>{{ entry.installCommand || (entry.installAvailable ? t('ops.installMissingHint') : t('ops.installUnavailable')) }}</strong>
+              </div>
+              <div class="inventory-note">
+                <span>{{ t('ops.homepage') }}</span>
+                <strong v-if="entry.homepage">
+                  <a class="inventory-link" :href="entry.homepage" target="_blank" rel="noreferrer">{{ entry.homepage }}</a>
+                </strong>
+                <strong v-else>{{ t('ops.notProvided') }}</strong>
+              </div>
+              <div class="inventory-note">
+                <span>{{ t('ops.path') }}</span>
+                <strong>{{ entry.binary }}</strong>
+              </div>
             </div>
+
+            <div class="card-actions">
+              <n-button
+                size="small"
+                type="primary"
+                :disabled="!entry.installAvailable && !entry.homepage"
+                :loading="installingExternalName === entry.name"
+                @click="installExternal(entry)"
+              >
+                {{ entry.installAvailable ? t('ops.installNow') : t('ops.openHomepage') }}
+              </n-button>
+              <n-button
+                size="small"
+                tertiary
+                :disabled="!entry.installCommand"
+                @click="entry.installCommand && copyInstallCommand(entry.installCommand)"
+              >
+                {{ t('ops.copyInstall') }}
+              </n-button>
+              <n-button
+                v-if="entry.homepage"
+                size="small"
+                tertiary
+                tag="a"
+                :href="entry.homepage"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {{ t('ops.openHomepage') }}
+              </n-button>
+            </div>
+          </article>
+        </div>
+        <n-empty v-else :description="t('ops.noMissingDependencies')" />
+      </n-card>
+    </div>
+
+    <n-card :title="t('ops.advancedDiagnostics')" class="glass-card">
+      <n-collapse>
+        <n-collapse-item :title="t('ops.rawDoctor')" name="doctor">
+          <pre v-if="store.doctor" class="json-block">{{ JSON.stringify(store.doctor, null, 2) }}</pre>
+          <n-empty v-else :description="t('ops.doctorEmpty')" />
+        </n-collapse-item>
+
+        <n-collapse-item :title="t('ops.activeSessions')" name="sessions">
+          <div v-if="sessions.length" class="inventory-list">
+            <article v-for="session in sessions" :key="`${session.workspace}:${session.windowId}`" class="inventory-item">
+              <div class="inventory-item__header">
+                <div>
+                  <strong>{{ session.workspace }}</strong>
+                  <p>{{ t('ops.windowLabel', { value: session.windowId }) }}</p>
+                </div>
+                <div class="inventory-item__meta">
+                  <n-tag size="small" type="info">{{ t('ops.tabs', { value: session.tabCount }) }}</n-tag>
+                  <n-tag size="small" type="warning">{{ formatIdleTime(session.idleMsRemaining) }}</n-tag>
+                </div>
+              </div>
+            </article>
+          </div>
+          <n-empty v-else :description="t('ops.noSessions')" />
+        </n-collapse-item>
+
+        <n-collapse-item :title="t('ops.pluginInventory')" name="plugins">
+          <div class="card-actions card-actions--between">
+            <div class="panel-note">
+              {{
+                unresolvedPluginCount
+                  ? t('ops.pluginUnresolved', { count: unresolvedPluginCount })
+                  : t('ops.pluginResolved')
+              }}
+            </div>
+            <n-tag size="small" :type="unresolvedPluginCount ? 'warning' : 'success'">
+              {{ t('ops.installedCount', { count: store.plugins.length }) }}
+            </n-tag>
           </div>
 
-          <div class="chip-cloud">
-            <span class="chip chip--small">{{ entry.binary }}</span>
-            <span v-for="tag in entry.tags" :key="`${entry.name}:${tag}`" class="chip chip--small">{{ tag }}</span>
+          <div v-if="store.plugins.length" class="inventory-list">
+            <article v-for="plugin in store.plugins" :key="plugin.name" class="inventory-item">
+              <div class="card-actions">
+                <n-button size="small" tertiary @click="openOpsRegistry(plugin.name, 'plugin')">{{ t('ops.openRegistrySlice') }}</n-button>
+                <n-button
+                  v-if="pluginCommands(plugin).length"
+                  size="small"
+                  tertiary
+                  @click="openWorkbench(pluginCommands(plugin)[0].command)"
+                >
+                  {{ t('ops.openFirstCommand') }}
+                </n-button>
+              </div>
+
+              <div class="inventory-item__header">
+                <div>
+                  <strong>{{ plugin.name }}</strong>
+                  <p>{{ plugin.description || t('common.noDescription') }}</p>
+                </div>
+                <div class="inventory-item__meta">
+                  <n-tag size="small" :type="pluginSourceType(plugin)">{{ pluginSourceKindLabel(plugin.sourceKind) }}</n-tag>
+                  <n-tag size="small" :type="pluginCoverageType(plugin)">
+                    {{ t('ops.registeredCoverage', { registered: plugin.registeredCommandCount, declared: plugin.declaredCommandCount }) }}
+                  </n-tag>
+                </div>
+              </div>
+
+              <div class="chip-cloud">
+                <span v-for="commandName in plugin.commands" :key="`${plugin.name}:${commandName}`" class="chip chip--small">
+                  {{ commandName }}
+                </span>
+                <span v-if="plugin.monorepoName" class="chip chip--small">{{ t('ops.monorepo', { value: plugin.monorepoName }) }}</span>
+              </div>
+
+              <div class="inventory-notes">
+                <div class="inventory-note">
+                  <span>{{ t('ops.version') }}</span>
+                  <strong>{{ plugin.version || t('common.unknown') }}</strong>
+                </div>
+                <div class="inventory-note">
+                  <span>{{ t('ops.installed') }}</span>
+                  <strong>{{ formatDateTime(plugin.installedAt) }}</strong>
+                </div>
+                <div class="inventory-note inventory-note--wide">
+                  <span>{{ t('ops.source') }}</span>
+                  <strong>{{ plugin.source || t('common.unknown') }}</strong>
+                </div>
+                <div class="inventory-note inventory-note--wide">
+                  <span>{{ t('ops.path') }}</span>
+                  <strong>{{ plugin.path }}</strong>
+                </div>
+              </div>
+            </article>
+          </div>
+          <n-empty v-else :description="t('ops.noPlugins')" />
+        </n-collapse-item>
+
+        <n-collapse-item :title="t('ops.externalInventory')" name="external">
+          <div class="card-actions card-actions--between">
+            <div class="panel-note">
+              {{
+                missingExternalCount
+                  ? t('ops.missingExternal', { count: missingExternalCount })
+                  : t('ops.externalResolved')
+              }}
+            </div>
+            <n-tag size="small" :type="missingExternalCount ? 'warning' : 'success'">
+              {{ t('ops.registeredCount', { count: store.externalClis.length }) }}
+            </n-tag>
           </div>
 
-          <div class="inventory-notes">
-            <div class="inventory-note inventory-note--wide">
-              <span>{{ t('ops.installGuidance') }}</span>
-              <strong>{{ entry.installCommand || (entry.installAvailable ? t('ops.installMissingHint') : t('ops.installUnavailable')) }}</strong>
-            </div>
-            <div class="inventory-note inventory-note--wide">
-              <span>{{ t('ops.homepage') }}</span>
-              <strong v-if="entry.homepage">
-                <a class="inventory-link" :href="entry.homepage" target="_blank" rel="noreferrer">{{ entry.homepage }}</a>
-              </strong>
-              <strong v-else>{{ t('ops.notProvided') }}</strong>
-            </div>
-          </div>
+          <div v-if="store.externalClis.length" class="inventory-list">
+            <article v-for="entry in store.externalClis" :key="entry.name" class="inventory-item">
+              <div class="inventory-item__header">
+                <div>
+                  <strong>{{ entry.name }}</strong>
+                  <p>{{ entry.description || t('common.noDescription') }}</p>
+                </div>
+                <div class="inventory-item__meta">
+                  <n-tag size="small" :type="externalInstallType(entry)">{{ entry.installed ? t('ops.installedState') : t('ops.missingState') }}</n-tag>
+                  <n-tag size="small" :type="entry.installAvailable ? 'info' : 'default'">
+                    {{ entry.installAvailable ? t('ops.autoInstallHint') : t('ops.manualInstall') }}
+                  </n-tag>
+                </div>
+              </div>
 
-          <div class="card-actions">
-            <n-button
-              size="small"
-              tertiary
-              :disabled="!entry.installCommand"
-              @click="entry.installCommand && copyInstallCommand(entry.installCommand)"
-            >
-              {{ t('ops.copyInstall') }}
-            </n-button>
-            <n-button
-              v-if="entry.homepage"
-              size="small"
-              tertiary
-              tag="a"
-              :href="entry.homepage"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {{ t('ops.openHomepage') }}
-            </n-button>
+              <div class="chip-cloud">
+                <span class="chip chip--small">{{ entry.binary }}</span>
+                <span v-for="tag in entry.tags" :key="`${entry.name}:${tag}`" class="chip chip--small">{{ tag }}</span>
+              </div>
+
+              <div class="inventory-notes">
+                <div class="inventory-note inventory-note--wide">
+                  <span>{{ t('ops.installGuidance') }}</span>
+                  <strong>{{ entry.installCommand || (entry.installAvailable ? t('ops.installMissingHint') : t('ops.installUnavailable')) }}</strong>
+                </div>
+                <div class="inventory-note inventory-note--wide">
+                  <span>{{ t('ops.homepage') }}</span>
+                  <strong v-if="entry.homepage">
+                    <a class="inventory-link" :href="entry.homepage" target="_blank" rel="noreferrer">{{ entry.homepage }}</a>
+                  </strong>
+                  <strong v-else>{{ t('ops.notProvided') }}</strong>
+                </div>
+              </div>
+            </article>
           </div>
-        </article>
-      </div>
-      <n-empty v-else :description="t('ops.noExternal')" />
+          <n-empty v-else :description="t('ops.noExternal')" />
+        </n-collapse-item>
+      </n-collapse>
     </n-card>
   </section>
 </template>

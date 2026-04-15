@@ -2,6 +2,7 @@ export type StudioSurface = 'builtin' | 'plugin' | 'external';
 export type StudioMode = 'public' | 'browser' | 'desktop' | 'external';
 export type StudioCapability = 'discovery' | 'search' | 'detail' | 'account' | 'action' | 'asset' | 'tooling' | 'other';
 export type StudioRisk = 'safe' | 'confirm' | 'dangerous';
+export type StudioSiteCategory = 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
 
 export interface StudioCommandArg {
   name: string;
@@ -18,7 +19,7 @@ export interface StudioCommandMeta {
   capability: StudioCapability;
   risk: StudioRisk;
   market: 'domestic' | 'international' | 'unknown';
-  siteCategory: 'social' | 'news' | 'finance' | 'ecommerce' | 'academic' | 'tools' | 'other';
+  siteCategory: StudioSiteCategory;
   uiHints: {
     supportsLists: boolean;
     supportsDetails: boolean;
@@ -44,9 +45,29 @@ export interface StudioRegistryPayload {
     site: string;
     commandCount: number;
     market?: 'domestic' | 'international' | 'unknown';
-    category?: 'social' | 'news' | 'finance' | 'ecommerce' | 'academic' | 'tools' | 'other';
+    category?: StudioSiteCategory;
+    popularity?: number;
     commandCountByTag?: Record<string, number>;
   }>;
+}
+
+export type StudioSiteAccessState =
+  | 'not_required'
+  | 'signed_in'
+  | 'signed_out'
+  | 'check_unavailable'
+  | 'browser_blocked'
+  | 'error';
+
+export interface StudioSiteAccessEntry {
+  site: string;
+  browserRequired: boolean;
+  state: StudioSiteAccessState;
+  authCommand: string | null;
+  checkCommand: string | null;
+  configCommand: string | null;
+  reason: string | null;
+  checkedAt: string;
 }
 
 export interface StudioHistoryEntry {
@@ -96,13 +117,76 @@ export interface StudioJobEntry {
   updatedAt: string;
 }
 
+export type StudioTemplateObjective =
+  | 'hotspots'
+  | 'reference'
+  | 'tracking'
+  | 'monitoring'
+  | 'collection'
+  | 'workspace';
+
+export interface StudioTemplateInputOption {
+  label: string;
+  value: string;
+}
+
+export interface StudioTemplateInput {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'select' | 'boolean';
+  required?: boolean;
+  default?: unknown;
+  options?: StudioTemplateInputOption[];
+}
+
+export interface StudioTemplateStep {
+  id?: string;
+  command: string;
+  args?: Record<string, unknown>;
+  runMode?: 'sequential' | 'parallel';
+  required?: boolean;
+}
+
+export interface StudioTemplatePrerequisite {
+  type: 'login' | 'browser' | 'external-cli' | 'config' | 'unknown';
+  target?: string;
+}
+
+export interface StudioTemplateMerge {
+  mode: 'table' | 'timeline' | 'mixed';
+  primaryFields?: string[];
+  dedupeKey?: string;
+  sortBy?: string;
+}
+
+export interface StudioTemplateOutput {
+  defaultView: 'table' | 'timeline' | 'cards';
+  chartPolicy?: 'off' | 'auto' | 'explicit';
+}
+
 export interface StudioRecipe {
   id: string;
+  kind?: 'builtin' | 'user';
+  visibility?: 'primary' | 'legacy';
+  objective?: StudioTemplateObjective;
   title: string;
+  summary?: string;
   description: string;
   command: string;
   defaultArgs: Record<string, unknown>;
   tags: string[];
+  inputs?: StudioTemplateInput[];
+  steps?: StudioTemplateStep[];
+  prerequisites?: StudioTemplatePrerequisite[];
+  merge?: StudioTemplateMerge;
+  output?: StudioTemplateOutput;
+  schedule?: {
+    supported: boolean;
+    defaultIntervalMinutes?: number;
+  };
+  snapshotPolicy?: 'manual' | 'suggested' | 'required';
+  i18nKey?: string;
+  createdFrom?: 'overview' | 'workbench' | 'manual';
 }
 
 export type StudioFavoriteKind = 'command' | 'recipe';
@@ -179,7 +263,7 @@ export interface StudioDoctorResult {
     tabCount: number;
     idleMsRemaining: number;
   }>;
-  issues: string[];
+  issues?: string[];
   [key: string]: unknown;
 }
 

@@ -152,6 +152,89 @@ describe('startStudioServer', () => {
     expect(recipes.recipes.some((item) => item.id === 'douyin-hashtag-hot')).toBe(true);
   });
 
+  it('probes site access and exposes sign-in guidance per site', async () => {
+    const execute = vi.fn(async (command: CliCommand) => {
+      if (command.name === 'status') {
+        throw new Error('Not logged in to Spotify');
+      }
+      return { ok: true };
+    });
+
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'spotify',
+          name: 'auth',
+          strategy: Strategy.COOKIE,
+          browser: true,
+        }),
+        makeCommand({
+          site: 'spotify',
+          name: 'status',
+          strategy: Strategy.COOKIE,
+          browser: true,
+        }),
+        makeCommand({
+          site: 'google',
+          name: 'trends',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      execute,
+      doctor: vi.fn(async () => ({
+        daemonRunning: true,
+        extensionConnected: true,
+        connectivity: { ok: true, durationMs: 18 },
+        sessions: [
+          {
+            workspace: tempDir,
+            windowId: 1,
+            tabCount: 4,
+            idleMsRemaining: 120000,
+          },
+        ],
+        issues: [],
+      })),
+    });
+
+    const response = await fetch(`${server.url}/api/site-access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sites: ['spotify', 'google'],
+      }),
+    });
+    const payload = await response.json() as {
+      entries: Array<{
+        site: string;
+        state: string;
+        authCommand: string | null;
+        checkCommand: string | null;
+      }>;
+      doctor: { daemonRunning: boolean };
+    };
+
+    expect(payload.doctor).toMatchObject({ daemonRunning: true });
+    expect(payload.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        site: 'spotify',
+        state: 'signed_out',
+        authCommand: 'spotify/auth',
+        checkCommand: 'spotify/status',
+      }),
+      expect.objectContaining({
+        site: 'google',
+        state: 'not_required',
+        authCommand: null,
+        checkCommand: null,
+      }),
+    ]));
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ site: 'spotify', name: 'status' }), {});
+  });
+
   it('persists favorites and presets through the local API', async () => {
     server = await startStudioServer({
       port: 0,
@@ -332,6 +415,78 @@ describe('startStudioServer', () => {
     expect(deleteJobResponse.status).toBe(200);
   });
 
+  it('rejects invalid snapshot job intervals before persisting them', async () => {
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'google',
+          name: 'trends',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      execute: vi.fn(),
+      doctor: vi.fn(async () => ({ ok: true, summary: 'healthy' })),
+    });
+
+    const createJobResponse = await fetch(`${server.url}/api/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sourceKind: 'recipe',
+        sourceId: 'google-trends',
+        command: 'google/trends',
+        name: 'Broken Google Trends Job',
+        args: { region: 'US' },
+        intervalMinutes: 0,
+        enabled: true,
+      }),
+    });
+    const payload = await createJobResponse.json() as { ok: boolean; error: string };
+
+    expect(createJobResponse.status).toBe(400);
+    expect(payload).toMatchObject({
+      ok: false,
+      error: 'Invalid intervalMinutes',
+    });
+
+    const jobsResponse = await fetch(`${server.url}/api/jobs`);
+    const jobs = await jobsResponse.json() as { jobs: unknown[] };
+    expect(jobs.jobs).toEqual([]);
+  });
+
+  it('returns 400 for malformed JSON request bodies', async () => {
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'google',
+          name: 'trends',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      execute: vi.fn(),
+      doctor: vi.fn(async () => ({ ok: true, summary: 'healthy' })),
+    });
+
+    const response = await fetch(`${server.url}/api/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"sourceKind":',
+    });
+    const payload = await response.json() as { ok: boolean; error: string };
+
+    expect(response.status).toBe(400);
+    expect(payload).toMatchObject({
+      ok: false,
+      error: 'Invalid JSON body',
+    });
+  });
+
   it('exposes ops inventory and supports live doctor options', async () => {
     const doctor = vi.fn(async () => ({
       daemonRunning: true,
@@ -413,6 +568,55 @@ describe('startStudioServer', () => {
 
     expect(doctor).toHaveBeenCalledWith({ live: true, sessions: true });
     expect(doctorResult.sessions).toMatchObject([{ workspace: 'C:/repo' }]);
+  });
+
+  it('can trigger one-click external dependency install through the local API', async () => {
+    const installExternalCli = vi.fn(async (name: string) => name === 'gh');
+
+    server = await startStudioServer({
+      port: 0,
+      storageDir: tempDir,
+      commands: [
+        makeCommand({
+          site: 'github',
+          name: 'search',
+          strategy: Strategy.PUBLIC,
+          browser: false,
+        }),
+      ],
+      externalClis: [
+        {
+          name: 'gh',
+          binary: 'gh',
+          description: 'GitHub CLI',
+          installed: false,
+          installAvailable: true,
+          installCommand: 'brew install gh',
+          tags: ['github', 'git'],
+          homepage: 'https://cli.github.com',
+        },
+      ],
+      execute: vi.fn(),
+      doctor: vi.fn(async () => ({ ok: true, summary: 'healthy' })),
+      installExternalCli,
+    });
+
+    const installResponse = await fetch(`${server.url}/api/external/gh/install`, {
+      method: 'POST',
+    });
+    const installResult = await installResponse.json() as {
+      ok: boolean;
+      entry: { name: string; installed: boolean };
+    };
+
+    expect(installExternalCli).toHaveBeenCalledWith('gh');
+    expect(installResult).toMatchObject({
+      ok: true,
+      entry: {
+        name: 'gh',
+        installed: true,
+      },
+    });
   });
 
   it('serves static assets and falls back to index.html for the app shell', async () => {

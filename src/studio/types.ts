@@ -46,6 +46,7 @@ export interface StudioRegistrySite {
   commandCount: number;
   market?: 'domestic' | 'international' | 'unknown';
   category?: 'social' | 'news' | 'commerce' | 'finance' | 'media' | 'knowledge' | 'video' | 'ai-tool' | 'utility' | 'other';
+  popularity?: number;
   commandCountByTag?: Record<string, number>;
 }
 
@@ -54,13 +55,95 @@ export interface StudioRegistryPayload {
   sites: StudioRegistrySite[];
 }
 
+export type StudioSiteAccessState =
+  | 'not_required'
+  | 'signed_in'
+  | 'signed_out'
+  | 'check_unavailable'
+  | 'browser_blocked'
+  | 'error';
+
+export interface StudioSiteAccessEntry {
+  site: string;
+  browserRequired: boolean;
+  state: StudioSiteAccessState;
+  authCommand: string | null;
+  checkCommand: string | null;
+  configCommand: string | null;
+  reason: string | null;
+  checkedAt: string;
+}
+
+export type StudioTemplateObjective =
+  | 'hotspots'
+  | 'reference'
+  | 'tracking'
+  | 'monitoring'
+  | 'collection'
+  | 'workspace';
+
+export interface StudioTemplateInputOption {
+  label: string;
+  value: string;
+}
+
+export interface StudioTemplateInput {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'select' | 'boolean';
+  required?: boolean;
+  default?: unknown;
+  options?: StudioTemplateInputOption[];
+}
+
+export interface StudioTemplateStep {
+  id?: string;
+  command: string;
+  args?: Record<string, unknown>;
+  runMode?: 'sequential' | 'parallel';
+  required?: boolean;
+}
+
+export interface StudioTemplatePrerequisite {
+  type: 'login' | 'browser' | 'external-cli' | 'config' | 'unknown';
+  target?: string;
+}
+
+export interface StudioTemplateMerge {
+  mode: 'table' | 'timeline' | 'mixed';
+  primaryFields?: string[];
+  dedupeKey?: string;
+  sortBy?: string;
+}
+
+export interface StudioTemplateOutput {
+  defaultView: 'table' | 'timeline' | 'cards';
+  chartPolicy?: 'off' | 'auto' | 'explicit';
+}
+
 export interface StudioRecipe {
   id: string;
+  kind?: 'builtin' | 'user';
+  visibility?: 'primary' | 'legacy';
+  objective?: StudioTemplateObjective;
   title: string;
+  summary?: string;
   description: string;
   command: string;
   defaultArgs: Record<string, unknown>;
   tags: string[];
+  inputs?: StudioTemplateInput[];
+  steps?: StudioTemplateStep[];
+  prerequisites?: StudioTemplatePrerequisite[];
+  merge?: StudioTemplateMerge;
+  output?: StudioTemplateOutput;
+  schedule?: {
+    supported: boolean;
+    defaultIntervalMinutes?: number;
+  };
+  snapshotPolicy?: 'manual' | 'suggested' | 'required';
+  i18nKey?: string;
+  createdFrom?: 'overview' | 'workbench' | 'manual';
 }
 
 export type StudioFavoriteKind = 'command' | 'recipe';
@@ -172,4 +255,27 @@ export interface StudioExternalCliEntry {
   installed: boolean;
   installAvailable: boolean;
   installCommand: string | null;
+}
+
+export interface StudioDoctorResult {
+  cliVersion?: string;
+  daemonRunning?: boolean;
+  daemonFlaky?: boolean;
+  extensionConnected?: boolean;
+  extensionFlaky?: boolean;
+  extensionVersion?: string;
+  latestExtensionVersion?: string;
+  connectivity?: {
+    ok: boolean;
+    error?: string;
+    durationMs: number;
+  };
+  sessions?: Array<{
+    workspace: string;
+    windowId: number;
+    tabCount: number;
+    idleMsRemaining: number;
+  }>;
+  issues?: string[];
+  [key: string]: unknown;
 }

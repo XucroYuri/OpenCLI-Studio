@@ -2,17 +2,31 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NAlert, NButton, NCard, NEmpty, NForm, NFormItem, NInput, NInputNumber, NSelect, NSwitch, NTag, useMessage } from 'naive-ui';
-import PresetShelf from '../components/PresetShelf.vue';
+import CommandReadinessBanner from '../components/CommandReadinessBanner.vue';
 import ResultPanel from '../components/ResultPanel.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
+import { executeCommand, installExternalCli as requestInstallExternalCli } from '../lib/api';
 import { buildResultComparison } from '../lib/compare';
 import { useStudioI18n } from '../lib/i18n';
-import { buildInsightPresetState, readInsightPresetState } from '../lib/preset-state';
-import { buildCommandReadiness } from '../lib/readiness';
+import { buildInsightPresetState, readInsightPresetState, readWorkbenchPresetState } from '../lib/preset-state';
+import { buildOverviewComboMergedResult, type OverviewComboRunOutcome } from '../lib/overview-combos';
+import { buildCommandReadiness, type CommandReadinessAction } from '../lib/readiness';
 import { buildInsightQuery, buildWorkbenchQuery, parseInsightQuery } from '../lib/routes';
 import { buildSnapshotTimelineRows } from '../lib/timeline';
+import { buildWorkbenchArgUi, inferWorkbenchFieldKind } from '../lib/workbench-args';
 import { useStudioStore } from '../stores/studio';
-import type { StudioPresetEntry, StudioSnapshotEntry } from '../types';
+import type { StudioCommandArg, StudioJobEntry, StudioPresetEntry, StudioRecipe, StudioSnapshotEntry } from '../types';
+
+type SelectionPane = 'official' | 'user' | 'job';
+
+interface UserTemplateCard {
+  id: string;
+  preset: StudioPresetEntry;
+  source: 'workbench' | 'insight';
+  title: string;
+  description: string;
+  updatedAt: string;
+}
 
 const store = useStudioStore();
 const route = useRoute();
@@ -20,12 +34,17 @@ const router = useRouter();
 const message = useMessage();
 const { locale, t } = useStudioI18n();
 
-const recipeModel = reactive<Record<string, any>>({});
+const templateModel = reactive<Record<string, any>>({});
 const jobModel = reactive({
   intervalMinutes: 60,
   enabled: true,
 });
-const pendingRecipeArgs = ref<Record<string, unknown> | null>(store.consumeInsightArgs());
+const pendingTemplateArgs = ref<Record<string, unknown> | null>(store.consumeInsightArgs());
+const runningTemplate = ref(false);
+const templateResult = ref<unknown>(undefined);
+const selectedPane = ref<SelectionPane>('official');
+const selectedUserTemplateId = ref('');
+const selectedJobId = ref<number | null>(null);
 const leftSnapshotId = ref<number | null>(null);
 const rightSnapshotId = ref<number | null>(null);
 
@@ -42,6 +61,7 @@ const selectedRecipeId = computed({
   },
   set: (value: string) => {
     store.setSelectedRecipe(value);
+    selectedPane.value = 'official';
     void router.replace({
       query: buildInsightQuery({
         recipeId: value,
@@ -51,43 +71,179 @@ const selectedRecipeId = computed({
   },
 });
 
-const recipe = computed(() =>
+const officialTemplates = computed(() =>
+  store.recipes.filter((item) => item.visibility !== 'legacy'),
+);
+const selectedRecipe = computed(() =>
   store.recipes.find((item) => item.id === selectedRecipeId.value) ?? null,
 );
-
-const recipeCommand = computed(() =>
-  store.registry.commands.find((item) => item.command === recipe.value?.command) ?? null,
+const selectedRecipeCommand = computed(() =>
+  store.registry.commands.find((item) => item.command === selectedRecipe.value?.command) ?? null,
 );
 
-const currentResult = computed(() =>
-  store.lastExecution && store.lastExecution.command === recipe.value?.command
-    ? store.lastExecution.result
-    : undefined,
+const myTemplates = computed<UserTemplateCard[]>(() => {
+  const workbenchCards = store.workbenchPresets.map((preset) => ({
+    id: `workbench-${preset.id}`,
+    preset,
+    source: 'workbench' as const,
+    title: preset.name,
+    description: preset.description || t('insights.userTemplateFromWorkbench'),
+    updatedAt: preset.updatedAt,
+  }));
+  const insightCards = store.insightPresets.map((preset) => ({
+    id: `insight-${preset.id}`,
+    preset,
+    source: 'insight' as const,
+    title: preset.name,
+    description: preset.description || t('insights.userTemplateFromInsights'),
+    updatedAt: preset.updatedAt,
+  }));
+
+  return [...workbenchCards, ...insightCards]
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+});
+
+const selectedUserTemplate = computed(() =>
+  myTemplates.value.find((item) => item.id === selectedUserTemplateId.value) ?? null,
 );
 
-const isFavoriteRecipe = computed(() =>
-  recipe.value ? store.favoriteRecipeIds.has(recipe.value.id) : false,
+const scheduledTemplates = computed(() =>
+  [...store.jobs].sort((left, right) => {
+    const leftTime = Date.parse(left.nextRunAt || left.updatedAt || left.createdAt);
+    const rightTime = Date.parse(right.nextRunAt || right.updatedAt || right.createdAt);
+    return rightTime - leftTime;
+  }),
 );
+const selectedJob = computed(() =>
+  scheduledTemplates.value.find((job) => job.id === selectedJobId.value) ?? null,
+);
+
+const activeSnapshotSource = computed(() => {
+  if (selectedPane.value === 'official' && selectedRecipe.value) {
+    return { sourceKind: 'recipe' as const, sourceId: selectedRecipe.value.id };
+  }
+  if (selectedPane.value === 'job' && selectedJob.value) {
+    return { sourceKind: selectedJob.value.sourceKind, sourceId: selectedJob.value.sourceId };
+  }
+  return null;
+});
 
 const currentSnapshots = computed<StudioSnapshotEntry[]>(() => {
-  const recipeItem = recipe.value;
-  if (!recipeItem) return [];
-  return store.snapshotsBySource[`recipe:${recipeItem.id}`] ?? [];
+  const source = activeSnapshotSource.value;
+  if (!source) return [];
+  return store.snapshotsBySource[`${source.sourceKind}:${source.sourceId}`] ?? [];
 });
 
 const currentJob = computed(() => {
-  const recipeItem = recipe.value;
-  if (!recipeItem) return null;
-  return store.jobs.find((job) => job.sourceKind === 'recipe' && job.sourceId === recipeItem.id) ?? null;
+  const recipe = selectedRecipe.value;
+  if (selectedPane.value === 'official' && recipe) {
+    return store.jobs.find((job) => job.sourceKind === 'recipe' && job.sourceId === recipe.id) ?? null;
+  }
+  if (selectedPane.value === 'job') {
+    return selectedJob.value;
+  }
+  return null;
 });
+
+function recipeTitleText(recipe: StudioRecipe): string {
+  const key = recipe.i18nKey ? `${recipe.i18nKey}.title` : `insights.builtins.${recipe.id}.title`;
+  const localized = t(key);
+  return localized === key ? recipe.title : localized;
+}
+
+function recipeSummaryText(recipe: StudioRecipe): string {
+  const key = recipe.i18nKey ? `${recipe.i18nKey}.description` : `insights.builtins.${recipe.id}.description`;
+  const localized = t(key);
+  return localized === key ? (recipe.summary || recipe.description) : localized;
+}
+
+function templateObjectiveLabel(objective: StudioRecipe['objective'] | 'workspace' | undefined): string {
+  const normalized = objective ?? 'workspace';
+  const key = `insights.objectives.${normalized}`;
+  const localized = t(key);
+  return localized === key ? normalized : localized;
+}
+
+function normalizeInputValue(value: unknown): string | number | boolean {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return JSON.stringify(value);
+}
+
+function applyTemplateDefaults(recipe: StudioRecipe | null): void {
+  for (const key of Object.keys(templateModel)) {
+    delete templateModel[key];
+  }
+
+  if (!recipe) return;
+
+  for (const [key, value] of Object.entries(recipe.defaultArgs)) {
+    templateModel[key] = normalizeInputValue(value);
+  }
+}
+
+function applyArgsToTemplateModel(args: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(args)) {
+    templateModel[key] = normalizeInputValue(value);
+  }
+}
+
+function queueTemplateArgs(args: Record<string, unknown>): void {
+  pendingTemplateArgs.value = { ...args };
+}
+
+const templateInputEntries = computed(() => {
+  const recipe = selectedRecipe.value;
+  const command = selectedRecipeCommand.value;
+  if (!recipe || !command || !recipe.inputs?.length) return [];
+
+  return recipe.inputs.map((input) => {
+    const matchedArg = command.args.find((arg) => arg.name === input.key);
+    const arg: StudioCommandArg = matchedArg ?? {
+      name: input.key,
+      type: input.type === 'text' ? 'string' : input.type,
+      required: input.required,
+      default: input.default,
+      choices: input.options?.map((option) => option.value),
+    };
+
+    return {
+      input,
+      arg,
+      ui: buildWorkbenchArgUi(command.command, arg, locale.value),
+    };
+  });
+});
+
 const commandReadiness = computed(() =>
-  buildCommandReadiness({
-    command: recipeCommand.value,
-    doctor: store.doctor,
-    plugins: store.plugins,
-    t,
-  }),
+  selectedPane.value !== 'official'
+    ? null
+    : buildCommandReadiness({
+      command: selectedRecipeCommand.value,
+      doctor: store.doctor,
+      siteAccess: selectedRecipeCommand.value ? store.getSiteAccess(selectedRecipeCommand.value.site) : null,
+      plugins: store.plugins,
+      externalClis: store.externalClis,
+      registryCommands: store.registry.commands,
+      siteLabel: selectedRecipeCommand.value ? store.getSiteDisplayName(selectedRecipeCommand.value.site, locale.value) : '',
+      formatCommandLabel: (item) => store.getCommandDisplayDesc(item.command, item.description || item.name, locale.value),
+      t,
+    }),
 );
+
+const visibleCommandReadiness = computed(() => {
+  const readiness = commandReadiness.value;
+  if (!readiness) return null;
+  return readiness.tone !== 'success' || readiness.actions.length > 0 ? readiness : null;
+});
+
+const timelineResult = computed(() => ({
+  items: buildSnapshotTimelineRows(currentSnapshots.value),
+}));
 
 const snapshotOptions = computed(() =>
   currentSnapshots.value.map((snapshot) => ({
@@ -96,18 +252,12 @@ const snapshotOptions = computed(() =>
   })),
 );
 
-const timelineResult = computed(() => ({
-  items: buildSnapshotTimelineRows(currentSnapshots.value),
-}));
-
 const leftSnapshot = computed(() =>
   currentSnapshots.value.find((snapshot) => snapshot.id === leftSnapshotId.value) ?? null,
 );
-
 const rightSnapshot = computed(() =>
   currentSnapshots.value.find((snapshot) => snapshot.id === rightSnapshotId.value) ?? null,
 );
-
 const snapshotComparisonResult = computed(() => {
   if (!leftSnapshot.value || !rightSnapshot.value) return undefined;
   return buildResultComparison(leftSnapshot.value.result, rightSnapshot.value.result);
@@ -121,58 +271,73 @@ const intervalOptions = computed(() => [
   { label: t('insights.intervalMinutes', { value: 1440 }), value: 1440 },
 ]);
 
-function normalizeInputValue(value: unknown): string | number | boolean {
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
-  }
-  if (value === null || value === undefined) {
-    return '';
-  }
-  return JSON.stringify(value);
-}
+const officialSelectionMeta = computed(() => {
+  const recipe = selectedRecipe.value;
+  if (!recipe) return null;
+  return {
+    title: recipeTitleText(recipe),
+    summary: recipeSummaryText(recipe),
+    objective: templateObjectiveLabel(recipe.objective || 'workspace'),
+    sourceCount: recipe.steps?.length ?? 1,
+    supportsSchedule: Boolean(recipe.schedule?.supported),
+    sourceCommand: selectedRecipeCommand.value
+      ? store.getCommandDisplayDesc(selectedRecipeCommand.value.command, selectedRecipeCommand.value.description || selectedRecipeCommand.value.name, locale.value)
+      : recipe.command,
+  };
+});
 
-function resetRecipeModel(): void {
-  for (const key of Object.keys(recipeModel)) {
-    delete recipeModel[key];
+watch([officialTemplates, myTemplates, scheduledTemplates], () => {
+  if (!selectedUserTemplateId.value) {
+    selectedUserTemplateId.value = myTemplates.value[0]?.id ?? '';
   }
-
-  if (!recipe.value) return;
-  for (const [key, value] of Object.entries(recipe.value.defaultArgs)) {
-    recipeModel[key] = normalizeInputValue(value);
+  if (!selectedJobId.value) {
+    selectedJobId.value = scheduledTemplates.value[0]?.id ?? null;
   }
-}
+  if (selectedPane.value === 'official' && selectedRecipe.value) return;
+  if (selectedPane.value === 'user' && selectedUserTemplate.value) return;
+  if (selectedPane.value === 'job' && selectedJob.value) return;
 
-function applyArgsToRecipeModel(args: Record<string, unknown>): void {
-  for (const [key, value] of Object.entries(args)) {
-    recipeModel[key] = normalizeInputValue(value);
+  if (selectedRecipe.value) {
+    selectedPane.value = 'official';
+    return;
   }
-}
-
-function queueRecipeArgs(args: Record<string, unknown>): void {
-  pendingRecipeArgs.value = { ...args };
-}
-
-watch(recipe, (recipeItem) => {
-  resetRecipeModel();
-  if (recipeItem) {
-    void store.refreshSnapshots('recipe', recipeItem.id);
+  if (myTemplates.value[0]) {
+    selectedPane.value = 'user';
+    selectedUserTemplateId.value = myTemplates.value[0].id;
+    return;
   }
-  if (pendingRecipeArgs.value) {
-    applyArgsToRecipeModel(pendingRecipeArgs.value);
-    pendingRecipeArgs.value = null;
+  if (scheduledTemplates.value[0]) {
+    selectedPane.value = 'job';
+    selectedJobId.value = scheduledTemplates.value[0].id;
   }
 }, { immediate: true });
 
+watch(selectedRecipe, (recipe) => {
+  applyTemplateDefaults(recipe);
+  templateResult.value = undefined;
+  if (recipe) {
+    void store.refreshSnapshots('recipe', recipe.id);
+  }
+  if (pendingTemplateArgs.value) {
+    applyArgsToTemplateModel(pendingTemplateArgs.value);
+    pendingTemplateArgs.value = null;
+  }
+}, { immediate: true });
+
+watch(activeSnapshotSource, (source) => {
+  if (!source) return;
+  void store.refreshSnapshots(source.sourceKind, source.sourceId);
+});
+
 watch(currentJob, (job) => {
-  if (job) {
-    jobModel.intervalMinutes = job.intervalMinutes;
-    jobModel.enabled = job.enabled;
+  if (!job) {
+    jobModel.intervalMinutes = selectedRecipe.value?.schedule?.defaultIntervalMinutes ?? 60;
+    jobModel.enabled = true;
     return;
   }
-
-  jobModel.intervalMinutes = 60;
-  jobModel.enabled = true;
-});
+  jobModel.intervalMinutes = job.intervalMinutes;
+  jobModel.enabled = job.enabled;
+}, { immediate: true });
 
 watch(currentSnapshots, (snapshots) => {
   if (!snapshots.length) {
@@ -186,8 +351,7 @@ watch(currentSnapshots, (snapshots) => {
   }
 
   if (!snapshots.some((snapshot) => snapshot.id === rightSnapshotId.value) || rightSnapshotId.value === leftSnapshotId.value) {
-    const candidate = snapshots.find((s) => s.id !== leftSnapshotId.value);
-    rightSnapshotId.value = candidate?.id ?? null;
+    rightSnapshotId.value = snapshots.find((snapshot) => snapshot.id !== leftSnapshotId.value)?.id ?? null;
   }
 }, { immediate: true });
 
@@ -202,7 +366,7 @@ watch(() => route.query, (query) => {
 
   const stagedArgs = store.consumeInsightArgs();
   if (stagedArgs) {
-    queueRecipeArgs(stagedArgs);
+    queueTemplateArgs(stagedArgs);
   }
 });
 
@@ -217,278 +381,556 @@ watch(() => store.advancedMode, (advancedMode) => {
   }
 });
 
-function fieldKind(key: string, value: unknown): 'boolean' | 'number' | 'text' {
-  if (typeof value === 'boolean') return 'boolean';
-  if (typeof value === 'number') return 'number';
-  return 'text';
+function templateTagLabel(tag: string): string {
+  const key = `insights.tags.${tag}`;
+  const localized = t(key);
+  return localized === key ? tag : localized;
 }
 
-function normalizedArgs(): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(recipeModel).filter(([, value]) => value !== '' && value !== null && value !== undefined),
-  );
+function snapshotStatusLabel(status: 'success' | 'error' | 'idle' | string): string {
+  if (status === 'success') return t('common.statusSuccess');
+  if (status === 'error') return t('common.statusError');
+  if (status === 'idle') return t('common.statusIdle');
+  return String(status);
 }
 
-async function runRecipe(): Promise<void> {
-  if (!recipe.value) return;
-  await store.runRecipe(recipe.value.id, normalizedArgs());
+function formatDateTime(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : t('insights.never');
 }
 
-async function captureRecipeSnapshot(): Promise<void> {
-  if (!recipe.value) return;
+function normalizedTemplateArgs(): Record<string, unknown> {
+  const recipe = selectedRecipe.value;
+  if (!recipe) return {};
+
+  const args: Record<string, unknown> = { ...recipe.defaultArgs };
+  for (const [key, value] of Object.entries(templateModel)) {
+    if (value === '' || value === null || value === undefined) {
+      if (typeof recipe.defaultArgs[key] === 'undefined') {
+        delete args[key];
+      }
+      continue;
+    }
+    args[key] = value;
+  }
+  return args;
+}
+
+function validateTemplateInputs(recipe: StudioRecipe): string | null {
+  const args = normalizedTemplateArgs();
+  for (const input of recipe.inputs ?? []) {
+    const value = args[input.key];
+    if (input.required && (value === '' || value === null || value === undefined)) {
+      return input.label;
+    }
+  }
+  return null;
+}
+
+function selectOfficialTemplate(recipeId: string): void {
+  selectedPane.value = 'official';
+  selectedRecipeId.value = recipeId;
+}
+
+function selectUserTemplate(item: UserTemplateCard): void {
+  selectedPane.value = 'user';
+  selectedUserTemplateId.value = item.id;
+}
+
+function selectScheduledTemplate(job: StudioJobEntry): void {
+  selectedPane.value = 'job';
+  selectedJobId.value = job.id;
+}
+
+async function runTemplate(): Promise<void> {
+  const recipe = selectedRecipe.value;
+  if (!recipe) return;
+
+  const missingInput = validateTemplateInputs(recipe);
+  if (missingInput) {
+    message.warning(t('insights.requiredInputMissing', { value: missingInput }));
+    return;
+  }
+
+  runningTemplate.value = true;
+  const args = normalizedTemplateArgs();
+
+  try {
+    const steps = recipe.steps?.length
+      ? recipe.steps
+      : [{ id: recipe.id, command: recipe.command, args: recipe.defaultArgs }];
+
+    if (steps.length === 1) {
+      const response = await executeCommand(recipe.command, args);
+      templateResult.value = response.result;
+      await store.refreshHistory();
+      message.success(t('insights.runRecipeSuccess', { value: recipeTitleText(recipe) }));
+      return;
+    }
+
+    const outcomes: OverviewComboRunOutcome[] = [];
+    for (const step of steps) {
+      const item = store.registry.commands.find((command) => command.command === step.command);
+      if (!item) continue;
+
+      try {
+        const response = await executeCommand(step.command, {
+          ...(step.args ?? {}),
+          ...args,
+        });
+        outcomes.push({
+          step: { command: step.command, args: { ...(step.args ?? {}), ...args }, item },
+          response,
+        });
+      } catch (error) {
+        outcomes.push({
+          step: { command: step.command, args: { ...(step.args ?? {}), ...args }, item },
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const merged = buildOverviewComboMergedResult(outcomes, {
+      fieldLabels: {
+        source: t('overview.combos.columns.source'),
+        title: t('overview.combos.columns.title'),
+        summary: t('overview.combos.columns.summary'),
+        rank: t('overview.combos.columns.rank'),
+        metric: t('overview.combos.columns.metric'),
+        url: t('overview.combos.columns.url'),
+      },
+      getSourceLabel: (step) => store.getSiteDisplayName(step.item.site, locale.value),
+      getCommandLabel: (step) => store.getCommandDisplayDesc(step.command, step.item.description || step.item.name, locale.value),
+      maxRowsPerSource: 8,
+    });
+
+    templateResult.value = { items: merged.items };
+    if (merged.successCount > 0) {
+      await store.refreshHistory();
+    }
+
+    if (merged.successCount > 0 && merged.failureCount === 0) {
+      message.success(t('insights.runRecipeSuccess', { value: recipeTitleText(recipe) }));
+      return;
+    }
+    if (merged.successCount > 0) {
+      message.warning(t('overview.combos.runPartial', { success: merged.successCount, failed: merged.failureCount }));
+      return;
+    }
+    message.error(t('overview.combos.runFailed'));
+  } finally {
+    runningTemplate.value = false;
+  }
+}
+
+function openInWorkbench(): void {
+  const recipe = selectedRecipe.value;
+  if (!recipe) return;
+  store.setSelectedCommand(recipe.command);
+  store.stageWorkbenchArgs(normalizedTemplateArgs());
+  void router.push({
+    name: 'workbench',
+    query: buildWorkbenchQuery({
+      command: recipe.command,
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
+      advancedMode: store.advancedMode,
+    }),
+  });
+}
+
+async function captureTemplateSnapshot(): Promise<void> {
+  const recipe = selectedRecipe.value;
+  if (!recipe) return;
 
   await store.captureSourceSnapshot({
     sourceKind: 'recipe',
-    sourceId: recipe.value.id,
-    command: recipe.value.command,
-    args: normalizedArgs(),
+    sourceId: recipe.id,
+    command: recipe.command,
+    args: normalizedTemplateArgs(),
   });
-  message.success(t('insights.captureSuccess', { value: recipe.value.title }));
+  message.success(t('insights.captureSuccess', { value: recipeTitleText(recipe) }));
 }
 
-async function toggleRecipeFavorite(): Promise<void> {
-  if (!recipe.value) return;
-
-  const nextFavorite = !isFavoriteRecipe.value;
-  await store.toggleFavorite('recipe', recipe.value.id, nextFavorite);
-  message.success(nextFavorite ? t('insights.favoriteSuccess', { value: recipe.value.title }) : t('insights.unfavoriteSuccess', { value: recipe.value.title }));
-}
-
-async function saveInsightPreset(input: { name: string; description: string }): Promise<void> {
-  if (!recipe.value) return;
+async function saveTemplatePreset(input: { name: string; description: string }): Promise<void> {
+  const recipe = selectedRecipe.value;
+  if (!recipe) return;
 
   await store.savePreset({
     kind: 'insight',
     name: input.name,
     description: input.description || null,
     state: buildInsightPresetState({
-      recipeId: recipe.value.id,
-      args: normalizedArgs(),
+      recipeId: recipe.id,
+      args: normalizedTemplateArgs(),
       advancedMode: store.advancedMode,
     }),
   });
   message.success(t('insights.savePresetSuccess', { value: input.name }));
 }
 
-async function saveRecipeJob(): Promise<void> {
-  if (!recipe.value) return;
+async function saveTemplateJob(): Promise<void> {
+  const recipe = selectedRecipe.value;
+  if (!recipe) return;
 
   const job = await store.saveJob({
-    id: currentJob.value?.id,
+    id: currentJob.value?.sourceKind === 'recipe' ? currentJob.value.id : undefined,
     sourceKind: 'recipe',
-    sourceId: recipe.value.id,
-    command: recipe.value.command,
-    name: t('insights.jobNameTemplate', { title: recipe.value.title }),
-    description: recipe.value.description,
-    args: normalizedArgs(),
+    sourceId: recipe.id,
+    command: recipe.command,
+    name: t('insights.jobNameTemplate', { title: recipeTitleText(recipe) }),
+    description: recipeSummaryText(recipe),
+    args: normalizedTemplateArgs(),
     intervalMinutes: jobModel.intervalMinutes,
     enabled: jobModel.enabled,
   });
   message.success(job.enabled ? t('insights.saveJobEnabled', { value: job.name }) : t('insights.saveJobDisabled', { value: job.name }));
 }
 
-async function runRecipeJobNow(): Promise<void> {
-  if (!currentJob.value) return;
-  const jobName = currentJob.value.name;
-  await store.runJobNow(currentJob.value.id);
-  message.success(t('insights.runJobSuccess', { value: jobName }));
+async function runSelectedJobNow(): Promise<void> {
+  const job = currentJob.value;
+  if (!job) return;
+  await store.runJobNow(job.id);
+  message.success(t('insights.runJobSuccess', { value: job.name }));
 }
 
-async function deleteRecipeJob(): Promise<void> {
-  if (!currentJob.value) return;
-  const jobName = currentJob.value.name;
-  const proceed = window.confirm(t('insights.deleteJobConfirm', { value: jobName }));
+async function deleteSelectedJob(): Promise<void> {
+  const job = currentJob.value;
+  if (!job) return;
+  const proceed = window.confirm(t('insights.deleteJobConfirm', { value: job.name }));
   if (!proceed) return;
-  await store.deleteJob(currentJob.value.id);
-  message.success(t('insights.deleteJobSuccess', { value: jobName }));
-}
-
-function readinessAlertType(tone: 'success' | 'info' | 'warning' | 'error'): 'success' | 'info' | 'warning' | 'error' {
-  return tone;
-}
-
-function statusLabel(status: 'success' | 'error' | string): string {
-  if (status === 'success') return t('common.statusSuccess');
-  if (status === 'error') return t('common.statusError');
-  return String(status);
-}
-
-function snapshotStatusLabel(status: 'success' | 'error' | 'idle' | string): string {
-  return statusLabel(status);
-}
-
-function modeLabel(value: 'public' | 'browser' | 'desktop' | 'external'): string {
-  return t(`registry.mode.${value}`);
-}
-
-function surfaceLabel(value: 'builtin' | 'plugin' | 'external'): string {
-  return t(`registry.surface.${value}`);
-}
-
-function capabilityLabel(value: 'discovery' | 'search' | 'detail' | 'account' | 'action' | 'asset' | 'tooling' | 'other'): string {
-  return t(`registry.capability.${value}`);
-}
-
-function openInWorkbench(): void {
-  if (!recipe.value) return;
-  store.setSelectedCommand(recipe.value.command);
-  store.stageWorkbenchArgs(normalizedArgs());
-  void router.push({
-    name: 'workbench',
-    query: buildWorkbenchQuery({
-      command: recipe.value.command,
-      advancedMode: store.advancedMode,
-    }),
-  });
-}
-
-function openOps(): void {
-  void router.push({ name: 'ops' });
+  await store.deleteJob(job.id);
+  if (selectedPane.value === 'job') {
+    selectedJobId.value = store.jobs[0]?.id ?? null;
+  }
+  message.success(t('insights.deleteJobSuccess', { value: job.name }));
 }
 
 function applyInsightPreset(preset: StudioPresetEntry): void {
   const state = readInsightPresetState(preset.state);
   store.setAdvancedMode(state.advancedMode);
-  queueRecipeArgs(state.args);
-  if (selectedRecipeId.value !== state.recipeId) {
-    selectedRecipeId.value = state.recipeId;
-  } else {
-    applyArgsToRecipeModel(state.args);
-    pendingRecipeArgs.value = null;
-  }
+  queueTemplateArgs(state.args);
+  selectOfficialTemplate(state.recipeId);
   message.success(t('insights.applyPresetSuccess', { value: preset.name }));
 }
 
-async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
-  const proceed = window.confirm(t('insights.deletePresetConfirm', { value: preset.name }));
+function openUserTemplate(item: UserTemplateCard): void {
+  if (item.source === 'workbench') {
+    const state = readWorkbenchPresetState(item.preset.state);
+    store.setAdvancedMode(state.advancedMode);
+    store.setSelectedCommand(state.command);
+    store.stageWorkbenchArgs(state.args);
+    void router.push({
+      name: 'workbench',
+      query: buildWorkbenchQuery({
+        command: state.command,
+        search: state.search,
+        market: state.market,
+        siteCategory: state.siteCategory,
+        site: state.site,
+        advancedMode: state.advancedMode,
+      }),
+    });
+    return;
+  }
+
+  applyInsightPreset(item.preset);
+}
+
+async function removeUserTemplate(item: UserTemplateCard): Promise<void> {
+  const proceed = window.confirm(t('insights.deletePresetConfirm', { value: item.title }));
   if (!proceed) return;
-  await store.deletePreset(preset.id);
-  message.success(t('insights.deletePresetSuccess', { value: preset.name }));
+  await store.deletePreset(item.preset.id);
+  message.success(t('insights.deletePresetSuccess', { value: item.title }));
+}
+
+function openJobSource(job: StudioJobEntry): void {
+  if (job.sourceKind === 'recipe') {
+    selectOfficialTemplate(job.sourceId);
+    return;
+  }
+  store.setSelectedCommand(job.sourceId);
+  void router.push({
+    name: 'workbench',
+    query: buildWorkbenchQuery({
+      command: job.sourceId,
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
+      advancedMode: store.advancedMode,
+    }),
+  });
+}
+
+async function handleReadinessAction(action: CommandReadinessAction): Promise<void> {
+  try {
+    if (action.type === 'run-doctor') {
+      await store.runDoctor({ live: true, sessions: true });
+      message.success(t('ops.doctorCompleted'));
+      return;
+    }
+
+    if (action.type === 'open-ops') {
+      void router.push({ name: 'ops' });
+      return;
+    }
+
+    if (action.type === 'open-command' && action.command) {
+      store.setSelectedCommand(action.command);
+      store.stageWorkbenchArgs({});
+      void router.push({
+        name: 'workbench',
+        query: buildWorkbenchQuery({
+          command: action.command,
+          search: '',
+          market: 'all',
+          siteCategory: 'all',
+          site: '',
+          advancedMode: store.advancedMode,
+        }),
+      });
+      return;
+    }
+
+    if (action.type === 'run-command' && action.command) {
+      await executeCommand(action.command, action.args ?? {});
+      await store.refreshHistory();
+      const nextCommand = store.registry.commands.find((entry) => entry.command === action.command);
+      if (nextCommand) {
+        await store.ensureSiteAccess([nextCommand.site], true);
+      }
+      message.success(t('readiness.actionCompleted'));
+      return;
+    }
+
+    if (action.type === 'install-external' && action.externalName) {
+      await requestInstallExternalCli(action.externalName);
+      await store.refreshOpsInventory();
+      message.success(t('readiness.installSuccess', { value: action.externalName }));
+      return;
+    }
+
+    if (action.type === 'open-url' && action.url) {
+      window.open(action.url, '_blank', 'noopener,noreferrer');
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error));
+  }
 }
 </script>
 
 <template>
-  <section class="page-grid">
-    <div class="page-inline-header">
+  <section class="page-grid templates-layout">
+    <div class="page-inline-header templates-layout__header">
       <h1 class="gradient-title">{{ t('routes.insights.title') }}</h1>
-      <p class="page-inline-header__desc">{{ t('routes.insights.description') }}</p>
     </div>
 
-    <n-card :title="t('insights.catalog')" class="glass-card">
-      <div v-if="store.recipes.length" class="recipe-grid">
-        <button
-          v-for="item in store.recipes"
-          :key="item.id"
-          class="recipe-card"
-          :class="{ 'recipe-card--active': item.id === selectedRecipeId }"
-          @click="selectedRecipeId = item.id"
-        >
-          <div class="eyebrow">{{ store.getCommandDisplayDesc(item.command, store.registry.commands.find(c => c.command === item.command)?.description || item.command, locale) }}</div>
-          <strong>{{ item.title }}</strong>
-          <div class="chip-cloud">
-            <span v-for="tag in item.tags" :key="tag" class="chip chip--small">{{ tag }}</span>
-          </div>
-        </button>
-      </div>
-      <div v-else>
-        <n-empty :description="t('insights.noRecipes')">
-          <template #extra>
-            <p class="panel-note">{{ t('insights.exploreRegistry') }}</p>
-            <n-button size="small" type="primary" @click="$router.push({ name: 'registry' })">{{ t('routes.registry.title') }}</n-button>
-          </template>
-        </n-empty>
-      </div>
-    </n-card>
-
-    <div class="split-grid">
-      <n-card :title="t('insights.controls')" class="glass-card">
-        <n-alert v-if="store.executionError" type="error" class="page-alert">
-          {{ store.executionError }}
-        </n-alert>
-        <template v-if="recipe">
-          <n-alert
-            v-if="commandReadiness"
-            :type="readinessAlertType(commandReadiness.tone)"
-            class="page-alert"
+    <div class="templates-layout__sidebar">
+      <n-card :title="t('insights.catalogOfficial')" class="glass-card">
+        <div v-if="officialTemplates.length" class="stack-list">
+          <button
+            v-for="item in officialTemplates"
+            :key="item.id"
+            class="stack-row stack-row--button template-nav-card"
+            :class="{ 'template-nav-card--active': selectedPane === 'official' && selectedRecipeId === item.id }"
+            @click="selectOfficialTemplate(item.id)"
           >
-            <div class="readiness-block">
-              <strong>{{ commandReadiness.title }}</strong>
-              <div v-for="bullet in commandReadiness.bullets" :key="bullet" class="panel-note">{{ bullet }}</div>
-              <div v-if="commandReadiness.needsOps" class="card-actions">
-                <n-button size="small" tertiary @click="openOps()">{{ t('workbench.openOps') }}</n-button>
-              </div>
+            <div class="stack-row__content">
+              <strong>{{ recipeTitleText(item) }}</strong>
+              <span>{{ recipeSummaryText(item) }}</span>
             </div>
-          </n-alert>
-          <div class="chip-cloud">
-            <n-tag size="small" type="warning">{{ store.getCommandDisplayDesc(recipe.command, recipeCommand?.description || recipe.command, locale) }}</n-tag>
-            <n-tag v-if="recipeCommand" size="small" type="default">{{ surfaceLabel(recipeCommand.meta.surface) }}</n-tag>
-            <n-tag v-if="recipeCommand" size="small" type="info">{{ modeLabel(recipeCommand.meta.mode) }}</n-tag>
-            <n-tag v-if="recipeCommand" size="small" type="success">{{ capabilityLabel(recipeCommand.meta.capability) }}</n-tag>
-          </div>
-          <p class="panel-note">{{ recipe.description }}</p>
-          <div class="card-actions">
-            <n-button quaternary @click="toggleRecipeFavorite()">
-              {{ isFavoriteRecipe ? t('registry.favorited') : t('insights.favoriteRecipe') }}
-            </n-button>
-            <save-preset-button
-              :button-label="t('insights.savePreset')"
-              :title="t('insights.savePresetTitle')"
-              :description="t('insights.savePresetDescription')"
-              :default-name="recipe.title"
-              :default-description="recipe.description"
-              :save="saveInsightPreset"
-            />
+            <div class="stack-row__meta stack-row__meta--wrap">
+              <span class="chip chip--small">{{ templateObjectiveLabel(item.objective || 'workspace') }}</span>
+              <span class="chip chip--small">{{ t('insights.sourceCount', { count: item.steps?.length ?? 1 }) }}</span>
+            </div>
+          </button>
+        </div>
+        <n-empty v-else :description="t('insights.noRecipes')" />
+      </n-card>
+
+      <n-card :title="t('insights.catalogMine')" class="glass-card">
+        <div v-if="myTemplates.length" class="stack-list">
+          <button
+            v-for="item in myTemplates"
+            :key="item.id"
+            class="stack-row stack-row--button template-nav-card"
+            :class="{ 'template-nav-card--active': selectedPane === 'user' && selectedUserTemplateId === item.id }"
+            @click="selectUserTemplate(item)"
+          >
+            <div class="stack-row__content">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.description }}</span>
+            </div>
+            <div class="stack-row__meta stack-row__meta--wrap">
+              <span class="chip chip--small">{{ item.source === 'workbench' ? t('routes.workbench.title') : t('routes.insights.title') }}</span>
+              <span class="chip chip--small">{{ new Date(item.updatedAt).toLocaleDateString() }}</span>
+            </div>
+          </button>
+        </div>
+        <n-empty v-else :description="t('insights.savedPresetsEmpty')" />
+      </n-card>
+
+      <n-card :title="t('insights.catalogScheduled')" class="glass-card">
+        <div v-if="scheduledTemplates.length" class="stack-list">
+          <button
+            v-for="job in scheduledTemplates"
+            :key="job.id"
+            class="stack-row stack-row--button template-nav-card"
+            :class="{ 'template-nav-card--active': selectedPane === 'job' && selectedJobId === job.id }"
+            @click="selectScheduledTemplate(job)"
+          >
+            <div class="stack-row__content">
+              <strong>{{ job.name }}</strong>
+              <span>{{ job.description || t('common.noDescription') }}</span>
+            </div>
+            <div class="stack-row__meta stack-row__meta--wrap">
+              <n-tag size="small" :type="job.lastStatus === 'error' ? 'error' : job.lastStatus === 'success' ? 'success' : 'warning'">
+                {{ snapshotStatusLabel(job.lastStatus) }}
+              </n-tag>
+              <span class="chip chip--small">{{ t('insights.intervalMinutes', { value: job.intervalMinutes }) }}</span>
+            </div>
+          </button>
+        </div>
+        <n-empty v-else :description="t('insights.noJobs')" />
+      </n-card>
+    </div>
+
+    <div class="templates-layout__workspace">
+      <n-card class="glass-card">
+        <template v-if="selectedPane === 'official' && selectedRecipe && officialSelectionMeta">
+          <div class="template-workspace__header">
+            <div class="template-workspace__copy">
+              <div class="chip-cloud">
+                <span class="chip chip--small">{{ officialSelectionMeta.objective }}</span>
+                <span class="chip chip--small">{{ t('insights.sourceCount', { count: officialSelectionMeta.sourceCount }) }}</span>
+                <span v-if="officialSelectionMeta.supportsSchedule" class="chip chip--small">{{ t('insights.scheduleSupported') }}</span>
+              </div>
+              <strong class="template-workspace__title">{{ officialSelectionMeta.title }}</strong>
+              <p class="template-workspace__summary">{{ officialSelectionMeta.summary }}</p>
+              <div class="chip-cloud">
+                <span v-for="tag in selectedRecipe.tags" :key="tag" class="chip chip--small">{{ templateTagLabel(tag) }}</span>
+              </div>
+              <div class="panel-note">{{ officialSelectionMeta.sourceCommand }}</div>
+            </div>
+            <div class="card-actions template-workspace__actions">
+              <n-button type="primary" :loading="runningTemplate" @click="runTemplate()">{{ t('insights.runRecipe') }}</n-button>
+              <n-button tertiary @click="openInWorkbench()">{{ t('insights.openWorkbench') }}</n-button>
+              <n-button tertiary :loading="store.runningSnapshot" @click="captureTemplateSnapshot()">{{ t('insights.captureSnapshot') }}</n-button>
+              <save-preset-button
+                :button-label="t('insights.savePreset')"
+                :title="t('insights.savePresetTitle')"
+                :description="t('insights.savePresetDescription')"
+                :default-name="officialSelectionMeta.title"
+                :default-description="officialSelectionMeta.summary"
+                :save="saveTemplatePreset"
+              />
+            </div>
           </div>
 
-          <n-form label-placement="top">
+          <command-readiness-banner
+            v-if="visibleCommandReadiness"
+            :readiness="visibleCommandReadiness"
+            @action="handleReadinessAction"
+          />
+
+          <n-alert v-if="store.executionError" type="error" class="page-alert">
+            {{ store.executionError }}
+          </n-alert>
+
+          <n-form v-if="templateInputEntries.length" label-placement="top" class="template-inputs">
             <n-form-item
-              v-for="[key, value] in Object.entries(recipeModel)"
-              :key="key"
-              :label="key"
+              v-for="entry in templateInputEntries"
+              :key="entry.input.key"
+              :feedback="entry.ui.hint || (entry.input.required ? t('workbench.requiredArgument') : '')"
             >
-              <div v-if="fieldKind(key, value) === 'boolean'" class="switch-inline switch-inline--wide">
-                <span>{{ key }}</span>
-                <n-switch v-model:value="recipeModel[key]" />
+              <template #label>
+                <div class="arg-field__label">
+                  <div class="arg-field__headline">
+                    <span class="arg-field__title">{{ entry.input.label }}</span>
+                    <span class="arg-field__key">{{ entry.input.key }}</span>
+                  </div>
+                </div>
+              </template>
+
+              <div v-if="inferWorkbenchFieldKind(entry.arg) === 'boolean'" class="switch-inline switch-inline--wide">
+                <span>{{ entry.ui.hint || entry.input.label }}</span>
+                <n-switch v-model:value="templateModel[entry.input.key]" />
               </div>
               <n-input-number
-                v-else-if="fieldKind(key, value) === 'number'"
-                v-model:value="recipeModel[key]"
+                v-else-if="inferWorkbenchFieldKind(entry.arg) === 'number'"
+                v-model:value="templateModel[entry.input.key]"
                 class="field-fill"
+                :placeholder="entry.ui.placeholder"
+              />
+              <n-select
+                v-else-if="inferWorkbenchFieldKind(entry.arg) === 'select'"
+                v-model:value="templateModel[entry.input.key]"
+                :options="entry.ui.options"
+                :placeholder="entry.ui.placeholder"
+                :filterable="entry.ui.options.length > 6"
+                :clearable="!entry.input.required"
               />
               <n-input
                 v-else
-                v-model:value="recipeModel[key]"
+                v-model:value="templateModel[entry.input.key]"
+                :placeholder="entry.ui.placeholder || t('workbench.enterValue')"
+                clearable
               />
             </n-form-item>
           </n-form>
+        </template>
 
-          <div class="card-actions">
-            <n-button type="primary" :loading="store.runningCommand" @click="runRecipe()">{{ t('insights.runRecipe') }}</n-button>
-            <n-button tertiary @click="openInWorkbench()">{{ t('insights.openWorkbench') }}</n-button>
-            <n-button tertiary :loading="store.runningSnapshot" @click="captureRecipeSnapshot()">{{ t('insights.captureSnapshot') }}</n-button>
-            <n-button tertiary @click="resetRecipeModel()">{{ t('insights.resetDefaults') }}</n-button>
+        <template v-else-if="selectedPane === 'user' && selectedUserTemplate">
+          <div class="template-workspace__header">
+            <div class="template-workspace__copy">
+              <div class="chip-cloud">
+                <span class="chip chip--small">{{ t('insights.userTemplate') }}</span>
+                <span class="chip chip--small">{{ selectedUserTemplate.source === 'workbench' ? t('routes.workbench.title') : t('routes.insights.title') }}</span>
+              </div>
+              <strong class="template-workspace__title">{{ selectedUserTemplate.title }}</strong>
+              <p class="template-workspace__summary">{{ selectedUserTemplate.description }}</p>
+              <div class="panel-note">{{ t('insights.updatedAt', { value: new Date(selectedUserTemplate.updatedAt).toLocaleString() }) }}</div>
+            </div>
+            <div class="card-actions template-workspace__actions">
+              <n-button type="primary" @click="openUserTemplate(selectedUserTemplate)">{{ t('insights.openUserTemplate') }}</n-button>
+              <n-button tertiary @click="removeUserTemplate(selectedUserTemplate)">{{ t('insights.deletePreset') }}</n-button>
+            </div>
           </div>
         </template>
+
+        <template v-else-if="selectedPane === 'job' && selectedJob">
+          <div class="template-workspace__header">
+            <div class="template-workspace__copy">
+              <div class="chip-cloud">
+                <span class="chip chip--small">{{ t('insights.catalogScheduled') }}</span>
+                <span class="chip chip--small">{{ t('insights.intervalMinutes', { value: selectedJob.intervalMinutes }) }}</span>
+              </div>
+              <strong class="template-workspace__title">{{ selectedJob.name }}</strong>
+              <p class="template-workspace__summary">{{ selectedJob.description || t('common.noDescription') }}</p>
+              <div class="chip-cloud">
+                <n-tag size="small" :type="selectedJob.lastStatus === 'error' ? 'error' : selectedJob.lastStatus === 'success' ? 'success' : 'warning'">
+                  {{ snapshotStatusLabel(selectedJob.lastStatus) }}
+                </n-tag>
+                <span class="chip chip--small">{{ t('insights.lastRun', { value: formatDateTime(selectedJob.lastRunAt) }) }}</span>
+                <span class="chip chip--small">{{ t('insights.nextRun', { value: formatDateTime(selectedJob.nextRunAt) }) }}</span>
+              </div>
+            </div>
+            <div class="card-actions template-workspace__actions">
+              <n-button type="primary" @click="runSelectedJobNow()">{{ t('common.runNow') }}</n-button>
+              <n-button tertiary @click="openJobSource(selectedJob)">{{ t('insights.openJobSource') }}</n-button>
+              <n-button tertiary @click="deleteSelectedJob()">{{ t('insights.deleteJob') }}</n-button>
+            </div>
+          </div>
+        </template>
+
+        <n-empty v-else :description="t('insights.noRecipes')" />
       </n-card>
 
-      <div class="page-grid">
-        <n-card :title="t('insights.timeline')" class="glass-card">
-          <template v-if="recipe">
-            <div class="card-actions card-actions--between">
-              <div class="panel-note">
-                {{ t('insights.timelineSummary', { count: currentSnapshots.length }) }}
-              </div>
-              <n-button size="small" quaternary @click="store.refreshSnapshots('recipe', recipe.id)">{{ t('common.refresh') }}</n-button>
-            </div>
-            <result-panel
-              :title="t('insights.timelineTitle', { value: recipe.title })"
-              :result="currentSnapshots.length ? timelineResult : undefined"
-            />
-          </template>
-        </n-card>
-
-        <n-card :title="t('insights.snapshotJob')" class="glass-card">
-          <template v-if="recipe">
+      <template v-if="selectedPane === 'official' && selectedRecipe">
+        <div class="split-grid">
+          <n-card :title="t('insights.snapshotJob')" class="glass-card">
             <n-form label-placement="top">
               <n-form-item :label="t('insights.captureCadence')">
                 <n-select v-model:value="jobModel.intervalMinutes" :options="intervalOptions" />
@@ -501,20 +943,21 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
               </n-form-item>
             </n-form>
 
-            <div v-if="currentJob" class="chip-cloud">
-              <n-tag size="small" :type="currentJob.lastStatus === 'error' ? 'error' : currentJob.lastStatus === 'success' ? 'success' : 'warning'">
-                {{ snapshotStatusLabel(currentJob.lastStatus) }}
-              </n-tag>
-              <span class="chip chip--small">{{ t('insights.lastRun', { value: currentJob.lastRunAt ? new Date(currentJob.lastRunAt).toLocaleString() : t('insights.never') }) }}</span>
-            </div>
-
             <div class="card-actions">
-              <n-button type="primary" @click="saveRecipeJob()">{{ t('insights.saveJob') }}</n-button>
-              <n-button tertiary :disabled="!currentJob" @click="runRecipeJobNow()">{{ t('common.runNow') }}</n-button>
-              <n-button tertiary :disabled="!currentJob" @click="deleteRecipeJob()">{{ t('insights.deleteJob') }}</n-button>
+              <n-button type="primary" @click="saveTemplateJob()">{{ t('insights.saveJob') }}</n-button>
+              <n-button tertiary :disabled="!currentJob" @click="runSelectedJobNow()">{{ t('common.runNow') }}</n-button>
+              <n-button tertiary :disabled="!currentJob" @click="deleteSelectedJob()">{{ t('insights.deleteJob') }}</n-button>
             </div>
-          </template>
-        </n-card>
+          </n-card>
+
+          <n-card :title="t('insights.timeline')" class="glass-card">
+            <div class="panel-note">{{ t('insights.timelineSummary', { count: currentSnapshots.length }) }}</div>
+            <result-panel
+              :title="t('insights.timelineTitle', { value: officialSelectionMeta?.title || recipeTitleText(selectedRecipe) })"
+              :result="currentSnapshots.length ? timelineResult : undefined"
+            />
+          </n-card>
+        </div>
 
         <n-card :title="t('insights.compareSnapshots')" class="glass-card">
           <template v-if="currentSnapshots.length">
@@ -523,27 +966,44 @@ async function removeInsightPreset(preset: StudioPresetEntry): Promise<void> {
               <n-select v-model:value="rightSnapshotId" :options="snapshotOptions" :placeholder="t('insights.targetSnapshot')" />
             </div>
             <result-panel
-              :title="recipe ? t('insights.snapshotDiff', { value: recipe.title }) : t('insights.compareSnapshots')"
+              :title="t('insights.snapshotDiff', { value: officialSelectionMeta?.title || recipeTitleText(selectedRecipe) })"
               :result="snapshotComparisonResult"
             />
           </template>
           <n-empty v-else :description="t('insights.compareEmpty')" />
         </n-card>
 
-        <n-card :title="t('insights.savedPresets')" class="glass-card">
-          <preset-shelf
-            :presets="store.insightPresets"
-            :empty-description="t('insights.savedPresetsEmpty')"
-            @apply="applyInsightPreset"
-            @remove="removeInsightPreset"
-          />
-        </n-card>
-
         <result-panel
-          :title="recipe ? t('insights.outputTitle', { value: recipe.title }) : t('insights.recipeOutput')"
-          :result="currentResult"
+          :title="t('insights.outputTitle', { value: officialSelectionMeta?.title || recipeTitleText(selectedRecipe) })"
+          :result="templateResult"
         />
-      </div>
+      </template>
+
+      <template v-else-if="selectedPane === 'job' && selectedJob">
+        <div class="split-grid">
+          <n-card :title="t('insights.timeline')" class="glass-card">
+            <div class="panel-note">{{ t('insights.timelineSummary', { count: currentSnapshots.length }) }}</div>
+            <result-panel
+              :title="t('insights.timelineTitle', { value: selectedJob.name })"
+              :result="currentSnapshots.length ? timelineResult : undefined"
+            />
+          </n-card>
+
+          <n-card :title="t('insights.compareSnapshots')" class="glass-card">
+            <template v-if="currentSnapshots.length">
+              <div class="compare-grid">
+                <n-select v-model:value="leftSnapshotId" :options="snapshotOptions" :placeholder="t('insights.baseSnapshot')" />
+                <n-select v-model:value="rightSnapshotId" :options="snapshotOptions" :placeholder="t('insights.targetSnapshot')" />
+              </div>
+              <result-panel
+                :title="t('insights.snapshotDiff', { value: selectedJob.name })"
+                :result="snapshotComparisonResult"
+              />
+            </template>
+            <n-empty v-else :description="t('insights.compareEmpty')" />
+          </n-card>
+        </div>
+      </template>
     </div>
   </section>
 </template>

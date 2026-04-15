@@ -15,13 +15,20 @@ import {
   fetchPlugins,
   fetchRecipes,
   fetchRegistry,
+  fetchSiteAccess,
   fetchSnapshots,
   runJobNow as requestRunJobNow,
   saveJob as requestSaveJob,
   savePreset as requestSavePreset,
   setFavorite as requestSetFavorite,
 } from '../lib/api';
-import { listWorkbenchCommands, pickDefaultWorkbenchCommand } from '../lib/registry';
+import { buildLocalizedCommandId, buildLocalizedCommandTitle } from '../lib/display';
+import {
+  CREATOR_SITE_CATEGORY_ORDER,
+  listWorkbenchCommands,
+  pickDefaultWorkbenchCommand,
+  sortSitesByDisplayPreference,
+} from '../lib/registry';
 import type {
   ExecuteResponse,
   StudioExternalCliEntry,
@@ -36,6 +43,7 @@ import type {
   StudioPresetKind,
   StudioRecipe,
   StudioRegistryPayload,
+  StudioSiteAccessEntry,
   StudioSnapshotEntry,
   StudioSnapshotSourceKind,
 } from '../types';
@@ -51,9 +59,41 @@ function readBooleanPreference(key: string, fallback: boolean): boolean {
   return value === '1';
 }
 
+function readStringPreference(key: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const value = window.localStorage.getItem(key);
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
 function writeBooleanPreference(key: string, value: boolean): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(key, value ? '1' : '0');
+}
+
+function writeStringPreference(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  if (!value) {
+    window.localStorage.removeItem(key);
+    return;
+  }
+  window.localStorage.setItem(key, value);
+}
+
+function buildDoctorInitPreferenceKey(scope?: string | null): string {
+  const normalized = scope?.trim();
+  return normalized ? `opencli-studio:doctor-initialized:${normalized}` : 'opencli-studio:doctor-initialized';
+}
+
+function detectPreferredLocale(): string | undefined {
+  if (typeof navigator === 'undefined') return undefined;
+  return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+}
+
+function isSiteAccessStale(entry: StudioSiteAccessEntry | null): boolean {
+  if (!entry) return true;
+  const checkedAt = Date.parse(entry.checkedAt);
+  if (!Number.isFinite(checkedAt)) return true;
+  return Date.now() - checkedAt > 120000;
 }
 
 export const useStudioStore = defineStore('studio', () => {
@@ -69,6 +109,7 @@ export const useStudioStore = defineStore('studio', () => {
   const favorites = ref<StudioFavoriteEntry[]>([]);
   const presets = ref<StudioPresetEntry[]>([]);
   const doctor = ref<StudioDoctorResult | null>(null);
+  const siteAccess = ref<Record<string, StudioSiteAccessEntry>>({});
   const lastExecution = ref<ExecuteResponse | null>(null);
   const stagedWorkbenchArgs = ref<Record<string, unknown> | null>(null);
   const stagedInsightArgs = ref<Record<string, unknown> | null>(null);
@@ -79,8 +120,11 @@ export const useStudioStore = defineStore('studio', () => {
   const runningDoctor = ref(false);
   const loadError = ref<string | null>(null);
   const executionError = ref<string | null>(null);
+  const siteAccessLoading = ref<Record<string, boolean>>({});
+  const initialDoctorCompleted = ref(readBooleanPreference(buildDoctorInitPreferenceKey(), false));
+  const lastWorkbenchCommandId = ref(readStringPreference('opencli-studio:last-workbench-command', ''));
 
-  const selectedCommand = ref('');
+  const selectedCommand = ref(lastWorkbenchCommandId.value);
   const selectedRecipeId = ref('');
   const advancedMode = ref(readBooleanPreference('opencli-studio:advanced-mode', false));
 
@@ -116,6 +160,20 @@ export const useStudioStore = defineStore('studio', () => {
   const insightPresets = computed(() =>
     presets.value.filter((preset) => preset.kind === 'insight'),
   );
+  const needsInitialDoctor = computed(() =>
+    Boolean(env.value) && !initialDoctorCompleted.value,
+  );
+
+  function syncInitialDoctorPreference(scope?: string | null): void {
+    initialDoctorCompleted.value = readBooleanPreference(buildDoctorInitPreferenceKey(scope), false)
+      || readBooleanPreference(buildDoctorInitPreferenceKey(), false);
+  }
+
+  function markInitialDoctorCompleted(scope?: string | null): void {
+    writeBooleanPreference(buildDoctorInitPreferenceKey(), true);
+    writeBooleanPreference(buildDoctorInitPreferenceKey(scope), true);
+    initialDoctorCompleted.value = true;
+  }
 
   function snapshotKey(sourceKind: StudioSnapshotSourceKind, sourceId: string): string {
     return `${sourceKind}:${sourceId}`;
@@ -124,17 +182,20 @@ export const useStudioStore = defineStore('studio', () => {
   function ensureSelectedCommand(): void {
     const nextCommand = pickDefaultWorkbenchCommand(
       registry.value.commands,
-      selectedCommand.value,
+      selectedCommand.value || lastWorkbenchCommandId.value,
       advancedMode.value,
+      detectPreferredLocale(),
     );
 
     if (nextCommand) {
-      selectedCommand.value = nextCommand;
+      setSelectedCommand(nextCommand);
     }
   }
 
   function setSelectedCommand(command: string): void {
     selectedCommand.value = command;
+    lastWorkbenchCommandId.value = command;
+    writeStringPreference('opencli-studio:last-workbench-command', command);
   }
 
   function setSelectedRecipe(recipeId: string): void {
@@ -189,12 +250,17 @@ export const useStudioStore = defineStore('studio', () => {
       presets.value = presetsPayload.presets;
       jobs.value = jobsPayload.jobs;
       recentSnapshots.value = snapshotsPayload.entries;
+      syncInitialDoctorPreference(envPayload.storageDir);
 
-      selectedCommand.value = pickDefaultWorkbenchCommand(
+      const defaultCommand = pickDefaultWorkbenchCommand(
         registryPayload.commands,
-        selectedCommand.value,
+        selectedCommand.value || lastWorkbenchCommandId.value,
         advancedMode.value,
+        detectPreferredLocale(),
       );
+      if (defaultCommand) {
+        setSelectedCommand(defaultCommand);
+      }
       if (!selectedRecipeId.value) {
         selectedRecipeId.value = recipePayload.recipes[0]?.id ?? '';
       }
@@ -251,7 +317,7 @@ export const useStudioStore = defineStore('studio', () => {
       const response = await postExecuteCommand(command, args);
       lastExecution.value = response;
       upsertHistory(response.historyEntry);
-      selectedCommand.value = command;
+      setSelectedCommand(command);
       return response;
     } catch (error) {
       executionError.value = getErrorMessage(error);
@@ -399,42 +465,208 @@ export const useStudioStore = defineStore('studio', () => {
 
     try {
       doctor.value = await fetchDoctor(options);
+      markInitialDoctorCompleted(env.value?.storageDir ?? null);
     } finally {
       runningDoctor.value = false;
     }
   }
 
-  // ── 站点→市场（国内/国际）映射 ──
+  function getSiteAccess(site: string): StudioSiteAccessEntry | null {
+    return siteAccess.value[site] ?? null;
+  }
 
-  const domesticSites = new Set([
-    '1688', '36kr', 'bilibili', 'boss', 'chaoxing', 'chatwise', 'cnki',
-    'ctrip', 'douban', 'doubao', 'doubao-app', 'douyin', 'gitee', 'hupu',
-    'jd', 'jianyu', 'jike', 'jimeng', 'ke', 'linux-do', 'maimai', 'mubu',
-    'ones', 'paperreview', 'quark', 'sinablog', 'sinafinance', 'smzdm',
-    'taobao', 'tieba', 'v2ex', 'weibo', 'weixin', 'weread', 'xianyu',
-    'xiaoe', 'xiaohongshu', 'xiaoyuzhou', 'xueqiu', 'yuanbao', 'yollomi',
-    'zhihu', 'zsxq',
-  ]);
+  function isSiteAccessLoading(site: string): boolean {
+    return Boolean(siteAccessLoading.value[site]);
+  }
+
+  async function ensureSiteAccess(sites: string[], force: boolean = false): Promise<void> {
+    const requestedSites = [...new Set(sites.filter(Boolean))];
+    const pendingSites = requestedSites.filter((site) =>
+      force
+      || isSiteAccessStale(siteAccess.value[site] ?? null)
+      || siteAccessLoading.value[site],
+    );
+
+    const fetchSites = pendingSites.filter((site) => !siteAccessLoading.value[site]);
+    if (fetchSites.length === 0) return;
+
+    siteAccessLoading.value = {
+      ...siteAccessLoading.value,
+      ...Object.fromEntries(fetchSites.map((site) => [site, true])),
+    };
+
+    try {
+      const response = await fetchSiteAccess(fetchSites);
+      if (response.doctor) {
+        doctor.value = response.doctor;
+      }
+      siteAccess.value = {
+        ...siteAccess.value,
+        ...Object.fromEntries(response.entries.map((entry) => [entry.site, entry])),
+      };
+    } finally {
+      const nextLoading = { ...siteAccessLoading.value };
+      for (const site of fetchSites) {
+        delete nextLoading[site];
+      }
+      siteAccessLoading.value = nextLoading;
+    }
+  }
+
+  const siteMetaMap = computed(() =>
+    new Map(registry.value.sites.map((entry) => [entry.site, entry])),
+  );
+
+  const commandSiteMetaMap = computed(() => {
+    const map = new Map<string, { market: string; category: string }>();
+    for (const command of registry.value.commands) {
+      if (!map.has(command.site)) {
+        map.set(command.site, {
+          market: command.meta.market,
+          category: command.meta.siteCategory,
+        });
+      }
+    }
+    return map;
+  });
 
   function isSiteDomestic(site: string): boolean {
-    return domesticSites.has(site);
+    const market = siteMetaMap.value.get(site)?.market ?? commandSiteMetaMap.value.get(site)?.market ?? 'unknown';
+    return market === 'domestic';
   }
 
   // ── 站点→中文显示名映射 ──
 
   const siteZhNameMap: Record<string, string> = {
-    bilibili: '哔哩哔哩', douyin: '抖音', xiaohongshu: '小红书',
-    weibo: '微博', zhihu: '知乎', douban: '豆瓣', jike: '即刻',
-    tieba: '贴吧', weixin: '微信', hupu: '虎扑', xiaoyuzhou: '小宇宙',
-    zsxq: '知识星球', maimai: '脉脉', weread: '微信读书',
-    '36kr': '36氪', sinablog: '新浪博客', sinafinance: '新浪财经',
-    jd: '京东', taobao: '淘宝', ctrip: '携程', smzdm: '什么值得买',
-    xianyu: '闲鱼', ke: '贝壳找房', cnki: '中国知网', chaoxing: '超星学习通',
-    doubao: '豆包', 'doubao-app': '豆包 App', jimeng: '即梦',
-    mubu: '幕布', quark: '夸克', yuanbao: '元宝', xiaoe: '小鹅通',
-    jianyu: '简鱼', boss: 'BOSS直聘', yollomi: 'Yollomi',
-    chatwise: 'ChatWise', paperreview: '论文评审',
-    xueqiu: '雪球', wikipedia: '维基百科', linkedin: '领英',
+    amazon: '亚马逊',
+    antigravity: '反重力',
+    'apple-podcasts': '苹果播客',
+    arxiv: 'arXiv 论文',
+    band: 'Band 社群',
+    barchart: 'Barchart 行情',
+    bbc: 'BBC',
+    bilibili: '哔哩哔哩',
+    douyin: '抖音',
+    xiaohongshu: '小红书',
+    binance: '币安',
+    bloomberg: '彭博',
+    bluesky: 'Bluesky 社区',
+    chatgpt: 'ChatGPT',
+    'chatgpt-app': 'ChatGPT 桌面版',
+    codex: 'Codex',
+    weibo: '微博',
+    zhihu: '知乎',
+    douban: '豆瓣',
+    jike: '即刻',
+    coupang: '酷澎',
+    cursor: 'Cursor 编程',
+    devto: 'DEV 社区',
+    dictionary: '词典',
+    'discord-app': 'Discord 社区',
+    facebook: '脸书',
+    gemini: 'Gemini',
+    google: '谷歌',
+    grok: 'Grok',
+    hackernews: '黑客新闻',
+    hf: 'Hugging Face',
+    tieba: '贴吧',
+    weixin: '微信',
+    hupu: '虎扑',
+    xiaoyuzhou: '小宇宙',
+    imdb: 'IMDb 影视',
+    instagram: 'Instagram',
+    zsxq: '知识星球',
+    maimai: '脉脉',
+    weread: '微信读书',
+    lesswrong: 'LessWrong',
+    lobsters: 'Lobsters 社区',
+    medium: 'Medium',
+    '36kr': '36氪',
+    sinablog: '新浪博客',
+    sinafinance: '新浪财经',
+    jd: '京东',
+    taobao: '淘宝',
+    ctrip: '携程',
+    smzdm: '什么值得买',
+    notion: 'Notion 文档',
+    notebooklm: 'NotebookLM',
+    xianyu: '闲鱼',
+    ke: '贝壳找房',
+    cnki: '中国知网',
+    chaoxing: '超星学习通',
+    doubao: '豆包',
+    'doubao-app': '豆包桌面版',
+    jimeng: '即梦',
+    pixiv: 'Pixiv 插画',
+    producthunt: 'Product Hunt',
+    reddit: 'Reddit 社区',
+    reuters: '路透社',
+    mubu: '幕布',
+    quark: '夸克',
+    yuanbao: '元宝',
+    xiaoe: '小鹅通',
+    spotify: 'Spotify 音乐',
+    stackoverflow: 'Stack Overflow',
+    steam: 'Steam 游戏',
+    substack: 'Substack',
+    tiktok: 'TikTok',
+    twitter: '推特',
+    web: '网页',
+    jianyu: '简鱼',
+    boss: 'BOSS直聘',
+    yollomi: 'Yollomi',
+    chatwise: 'ChatWise',
+    paperreview: '论文评审',
+    xueqiu: '雪球',
+    wikipedia: '维基百科',
+    linkedin: '领英',
+    'yahoo-finance': '雅虎财经',
+    youtube: 'YouTube',
+    gitee: '码云',
+  };
+
+  const siteTitleAliasMap: Record<string, string[]> = {
+    antigravity: ['Antigravity'],
+    'apple-podcasts': ['Apple Podcasts', 'Apple Podcast'],
+    arxiv: ['arXiv'],
+    band: ['Band'],
+    barchart: ['Barchart'],
+    bluesky: ['Bluesky'],
+    chatgpt: ['ChatGPT'],
+    'chatgpt-app': ['ChatGPT'],
+    codex: ['Codex'],
+    coupang: ['Coupang'],
+    cursor: ['Cursor'],
+    devto: ['DEV.to', 'DEV'],
+    'discord-app': ['Discord'],
+    facebook: ['Facebook'],
+    gemini: ['Gemini'],
+    gitee: ['Gitee'],
+    google: ['Google'],
+    grok: ['Grok'],
+    hackernews: ['Hacker News'],
+    hf: ['Hugging Face'],
+    imdb: ['IMDb'],
+    instagram: ['Instagram'],
+    lesswrong: ['LessWrong'],
+    lobsters: ['Lobsters'],
+    medium: ['Medium'],
+    notion: ['Notion'],
+    notebooklm: ['NotebookLM'],
+    pixiv: ['Pixiv'],
+    producthunt: ['Product Hunt'],
+    reddit: ['Reddit'],
+    reuters: ['Reuters'],
+    spotify: ['Spotify'],
+    stackoverflow: ['Stack Overflow'],
+    steam: ['Steam'],
+    substack: ['Substack'],
+    tiktok: ['TikTok'],
+    twitter: ['Twitter', 'X'],
+    yollomi: ['Yollomi'],
+    chatwise: ['ChatWise'],
+    'yahoo-finance': ['Yahoo Finance'],
+    youtube: ['YouTube'],
   };
 
   function getSiteDisplayName(site: string, locale: string): string {
@@ -442,6 +674,14 @@ export const useStudioStore = defineStore('studio', () => {
       return siteZhNameMap[site] ?? site;
     }
     return site;
+  }
+
+  function getCommandDisplayId(command: string, locale: string): string {
+    const [site = ''] = command.split('/', 1);
+    return buildLocalizedCommandId(command, {
+      locale,
+      siteLabel: getSiteDisplayName(site, locale),
+    });
   }
 
   // ── 命令→中文描述映射 ──
@@ -551,7 +791,7 @@ export const useStudioStore = defineStore('studio', () => {
     'codex/history': '列出 Codex 最近对话',
     'codex/model': '获取或切换 Codex 活跃模型',
     'codex/read': '读取 Codex 当前对话内容',
-    'codex/send': '向 Codex AI 发送命令',
+    'codex/send': '向 Codex AI 发送消息',
     // coupang
     'coupang/add-to-cart': 'Coupang 加入购物车',
     'coupang/search': 'Coupang 商品搜索',
@@ -719,7 +959,7 @@ export const useStudioStore = defineStore('studio', () => {
     'notion/status': '检查 Notion 桌面版连接状态',
     'notion/write': '向当前 Notion 页面追加文本',
     // ones
-    'ones/login': 'ONES 登录（通过浏览器桥接）',
+    'ones/login': 'ONES 登录（通过浏览器连接）',
     'ones/logout': 'ONES 注销当前会话',
     'ones/me': 'ONES 当前用户信息',
     'ones/my-tasks': 'ONES 我的工作项',
@@ -896,67 +1136,39 @@ export const useStudioStore = defineStore('studio', () => {
   };
 
   function getCommandDisplayDesc(command: string, originalDesc: string, locale: string): string {
-    if (locale === 'zh-CN') {
-      return commandZhDescMap[command] ?? originalDesc;
-    }
-    return originalDesc;
+    const [site = ''] = command.split('/', 1);
+    return buildLocalizedCommandTitle(command, originalDesc, {
+      locale,
+      siteLabel: getSiteDisplayName(site, locale),
+      mappedTitle: commandZhDescMap[command],
+      siteAliases: siteTitleAliasMap[site],
+    });
   }
 
-  // ── 站点→功能分类映射 ──
-
-  const siteCategoryMap: Record<string, string> = {
-    // 社交媒体
-    twitter: 'social', instagram: 'social', facebook: 'social',
-    tiktok: 'social', douyin: 'social', bilibili: 'social',
-    bluesky: 'social', weibo: 'social', xiaohongshu: 'social',
-    jike: 'social', tieba: 'social', reddit: 'social',
-    'discord-app': 'social', band: 'social', linkedin: 'social',
-    maimai: 'social', zsxq: 'social', pixiv: 'social',
-    youtube: 'social', hupu: 'social', xiaoyuzhou: 'social',
-    douban: 'social', weixin: 'social',
-    // 新闻资讯
-    '36kr': 'news', bbc: 'news', reuters: 'news',
-    hackernews: 'news', devto: 'news', producthunt: 'news',
-    google: 'news', v2ex: 'news', 'linux-do': 'news',
-    lesswrong: 'news', lobsters: 'news', medium: 'news',
-    substack: 'news', sinablog: 'news',
-    // 财经热点
-    xueqiu: 'finance', sinafinance: 'finance', bloomberg: 'finance',
-    barchart: 'finance', binance: 'finance', 'yahoo-finance': 'finance',
-    // 电商购物
-    amazon: 'ecommerce', '1688': 'ecommerce', jd: 'ecommerce',
-    taobao: 'ecommerce', coupang: 'ecommerce', ctrip: 'ecommerce',
-    smzdm: 'ecommerce', xianyu: 'ecommerce', steam: 'ecommerce',
-    ke: 'ecommerce',
-    // 学术科研
-    arxiv: 'academic', cnki: 'academic', chaoxing: 'academic',
-    paperreview: 'academic', wikipedia: 'academic', dictionary: 'academic',
-    stackoverflow: 'academic', zhihu: 'academic', weread: 'academic',
-    // 效率工具
-    chatgpt: 'tools', 'chatgpt-app': 'tools', chatwise: 'tools',
-    codex: 'tools', cursor: 'tools', doubao: 'tools',
-    'doubao-app': 'tools', gemini: 'tools', grok: 'tools',
-    hf: 'tools', jimeng: 'tools', mubu: 'tools',
-    notion: 'tools', notebooklm: 'tools', ones: 'tools',
-    quark: 'tools', yuanbao: 'tools', yollomi: 'tools',
-    xiaoe: 'tools', web: 'tools', jianyu: 'tools', gitee: 'tools',
-    // 其他
-    antigravity: 'other', imdb: 'other', spotify: 'other',
-    'apple-podcasts': 'other', boss: 'other',
-  };
-
   const categoryLabelMap: Record<string, { en: string; zh: string; icon: string }> = {
-    social: { en: 'Social Media', zh: '社交媒体', icon: '💬' },
-    news: { en: 'News & Info', zh: '新闻资讯', icon: '📰' },
-    finance: { en: 'Finance', zh: '财经热点', icon: '💰' },
-    ecommerce: { en: 'E-commerce', zh: '电商购物', icon: '🛒' },
-    academic: { en: 'Academic', zh: '学术科研', icon: '🎓' },
-    tools: { en: 'Tools', zh: '效率工具', icon: '🔧' },
+    social: { en: 'Social', zh: '社交社区', icon: '💬' },
+    video: { en: 'Video', zh: '视频内容', icon: '🎬' },
+    media: { en: 'Media', zh: '媒体娱乐', icon: '🎧' },
+    'ai-tool': { en: 'AI Tools', zh: 'AI 工具', icon: '✨' },
+    knowledge: { en: 'Knowledge', zh: '知识学习', icon: '🎓' },
+    utility: { en: 'Utility', zh: '效率工具', icon: '🧰' },
+    news: { en: 'News', zh: '新闻资讯', icon: '📰' },
+    commerce: { en: 'Commerce', zh: '电商消费', icon: '🛒' },
+    finance: { en: 'Finance', zh: '财经金融', icon: '💰' },
     other: { en: 'Other', zh: '其他', icon: '📦' },
+    ecommerce: { en: 'Commerce', zh: '电商消费', icon: '🛒' },
+    academic: { en: 'Knowledge', zh: '知识学习', icon: '🎓' },
+    tools: { en: 'Utility', zh: '效率工具', icon: '🧰' },
   };
+  const categoryDisplayPriority: Record<string, number> = Object.fromEntries(
+    CREATOR_SITE_CATEGORY_ORDER.map((category, index) => [category, index]),
+  ) as Record<string, number>;
+  categoryDisplayPriority.ecommerce = categoryDisplayPriority.commerce;
+  categoryDisplayPriority.academic = categoryDisplayPriority.knowledge;
+  categoryDisplayPriority.tools = categoryDisplayPriority.utility;
 
   function getSiteCategory(site: string): string {
-    return siteCategoryMap[site] ?? 'other';
+    return siteMetaMap.value.get(site)?.category ?? commandSiteMetaMap.value.get(site)?.category ?? 'other';
   }
 
   function getCategoryLabel(category: string, locale: string): string {
@@ -979,26 +1191,37 @@ export const useStudioStore = defineStore('studio', () => {
     }
     return Array.from(groups.entries())
       .map(([category, commands]) => ({ category, commands, count: commands.length }))
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) =>
+        (categoryDisplayPriority[a.category] ?? Number.MAX_SAFE_INTEGER)
+        - (categoryDisplayPriority[b.category] ?? Number.MAX_SAFE_INTEGER)
+        || b.count - a.count
+        || a.category.localeCompare(b.category));
   });
 
   const siteGroups = computed(() => {
+    const siteOrder = new Map(registry.value.sites.map((item, index) => [item.site, index]));
     const groups = new Map<string, typeof registry.value.commands>();
     for (const cmd of registry.value.commands) {
       const list = groups.get(cmd.site) ?? [];
       list.push(cmd);
       groups.set(cmd.site, list);
     }
-    return Array.from(groups.entries())
+    return sortSitesByDisplayPreference(
+      Array.from(groups.entries())
       .map(([site, commands]) => {
         const category = getSiteCategory(site);
-        const domestic = isSiteDomestic(site);
-        return { site, commands, count: commands.length, category, icon: getCategoryIcon(category), domestic };
-      })
-      .sort((a, b) => {
-        if (a.domestic !== b.domestic) return a.domestic ? -1 : 1;
-        return b.count - a.count;
-      });
+        const market = siteMetaMap.value.get(site)?.market ?? commandSiteMetaMap.value.get(site)?.market ?? 'unknown';
+        const domestic = market === 'domestic';
+        return { site, commands, count: commands.length, category, market, icon: getCategoryIcon(category), domestic };
+      }),
+      undefined,
+      {
+        resolveCategory: (item) => item.category,
+        resolveMarket: (item) => item.market,
+        resolvePopularity: (item) => siteOrder.get(item.site),
+        resolveCommandCount: (item) => item.count,
+      },
+    );
   });
 
   return {
@@ -1014,6 +1237,7 @@ export const useStudioStore = defineStore('studio', () => {
     favorites,
     presets,
     doctor,
+    siteAccess,
     lastExecution,
     stagedWorkbenchArgs,
     stagedInsightArgs,
@@ -1023,6 +1247,8 @@ export const useStudioStore = defineStore('studio', () => {
     runningDoctor,
     loadError,
     executionError,
+    siteAccessLoading,
+    lastWorkbenchCommandId,
     selectedCommand,
     selectedRecipeId,
     advancedMode,
@@ -1034,6 +1260,8 @@ export const useStudioStore = defineStore('studio', () => {
     registryPresets,
     workbenchPresets,
     insightPresets,
+    initialDoctorCompleted,
+    needsInitialDoctor,
     categoryGroups,
     siteGroups,
     getSiteCategory,
@@ -1041,7 +1269,10 @@ export const useStudioStore = defineStore('studio', () => {
     getCategoryIcon,
     isSiteDomestic,
     getSiteDisplayName,
+    getCommandDisplayId,
     getCommandDisplayDesc,
+    getSiteAccess,
+    isSiteAccessLoading,
     setSelectedCommand,
     setSelectedRecipe,
     setAdvancedMode,
@@ -1067,5 +1298,7 @@ export const useStudioStore = defineStore('studio', () => {
     savePreset,
     deletePreset,
     runDoctor,
+    markInitialDoctorCompleted,
+    ensureSiteAccess,
   };
 });

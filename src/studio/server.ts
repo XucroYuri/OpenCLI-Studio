@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { executeCommand } from '../execution.js';
-import { getInstallCmd, isBinaryInstalled, loadExternalClis } from '../external.js';
+import { getInstallCmd, installExternalCli as performExternalInstall, isBinaryInstalled, loadExternalClis } from '../external.js';
 import { listPlugins, type PluginInfo } from '../plugin.js';
 import { getRegistry, type CliCommand } from '../registry.js';
 import { PKG_VERSION } from '../version.js';
@@ -12,16 +12,16 @@ import { buildStudioRegistry } from './metadata.js';
 import { buildStudioExternalInventory, buildStudioPluginInventory } from './ops.js';
 import { listStudioRecipes } from './recipes.js';
 import { StudioJobScheduler } from './scheduler.js';
+import { buildSiteAccessEntries } from './site-access.js';
 import { StudioStore } from './store.js';
 import type {
+  StudioDoctorResult,
   StudioExternalCliEntry,
   StudioFavoriteKind,
   StudioPluginEntry,
   StudioPresetKind,
   StudioSnapshotSourceKind,
 } from './types.js';
-
-export type StudioDoctorResult = Record<string, unknown>;
 
 export interface StartStudioServerOptions {
   port?: number;
@@ -33,6 +33,7 @@ export interface StartStudioServerOptions {
   externalClis?: StudioExternalCliEntry[];
   execute?: (command: CliCommand, args: Record<string, unknown>) => Promise<unknown>;
   doctor?: (options?: { live?: boolean; sessions?: boolean }) => Promise<StudioDoctorResult>;
+  installExternalCli?: (name: string) => Promise<boolean>;
 }
 
 export interface StudioServerHandle {
@@ -81,6 +82,86 @@ interface JobRequestBody {
 interface DoctorRequestBody {
   live?: boolean;
   sessions?: boolean;
+}
+
+interface SiteAccessRequestBody {
+  sites?: string[];
+}
+
+class StudioRequestError extends Error {
+  readonly statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = 'StudioRequestError';
+    this.statusCode = statusCode;
+  }
+}
+
+function getErrorStatusCode(error: unknown): number {
+  return error instanceof StudioRequestError ? error.statusCode : 500;
+}
+
+function readRequiredString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new StudioRequestError(400, `Invalid ${field}`);
+  }
+  return value.trim();
+}
+
+function readOptionalDescription(value: unknown): string | null | undefined {
+  if (typeof value === 'undefined') return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') {
+    throw new StudioRequestError(400, 'Invalid description');
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readPlainRecord(value: unknown, field: string): Record<string, unknown> {
+  if (typeof value === 'undefined') return {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new StudioRequestError(400, `Invalid ${field}`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function readPositiveNumber(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new StudioRequestError(400, `Invalid ${field}`);
+  }
+  return value;
+}
+
+function readBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new StudioRequestError(400, `Invalid ${field}`);
+  }
+  return value;
+}
+
+function validateJobRequestBody(body: JobRequestBody): JobRequestBody {
+  const sourceKind = readRequiredString(body.sourceKind, 'sourceKind');
+  if (sourceKind !== 'command' && sourceKind !== 'recipe') {
+    throw new StudioRequestError(400, 'Invalid sourceKind');
+  }
+
+  if (typeof body.id !== 'undefined' && (!Number.isInteger(body.id) || body.id <= 0)) {
+    throw new StudioRequestError(400, 'Invalid id');
+  }
+
+  return {
+    id: body.id,
+    sourceKind,
+    sourceId: readRequiredString(body.sourceId, 'sourceId'),
+    command: readRequiredString(body.command, 'command'),
+    name: readRequiredString(body.name, 'name'),
+    description: readOptionalDescription(body.description),
+    args: readPlainRecord(body.args, 'args'),
+    intervalMinutes: readPositiveNumber(body.intervalMinutes, 'intervalMinutes'),
+    enabled: readBoolean(body.enabled, 'enabled'),
+  };
 }
 
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -164,7 +245,11 @@ async function readJsonBody<T>(req: IncomingMessage, fallback?: T): Promise<T> {
   if (!body) {
     return (fallback ?? {}) as T;
   }
-  return JSON.parse(body) as T;
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new StudioRequestError(400, 'Invalid JSON body');
+  }
 }
 
 function createCommandMap(commands: CliCommand[]): Map<string, CliCommand> {
@@ -246,17 +331,182 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
   const plugins = rawPlugins
     ? buildStudioPluginInventory(rawPlugins, registry)
     : ((options.plugins as StudioPluginEntry[] | undefined) ?? []);
-  const externalClis = (options.externalClis ?? buildStudioExternalInventory(
-    loadExternalClis(),
-    isBinaryInstalled,
-    (entry) => getInstallCmd(entry.install),
-  )).map((entry) => ({
-    ...entry,
-    installCommand: entry.installCommand ?? null,
-  }));
+  function loadStudioExternalEntries(): StudioExternalCliEntry[] {
+    return (options.externalClis ?? buildStudioExternalInventory(
+      loadExternalClis(),
+      isBinaryInstalled,
+      (entry) => getInstallCmd(entry.install),
+    )).map((entry) => ({
+      ...entry,
+      installCommand: entry.installCommand ?? null,
+    }));
+  }
+  let externalClis = loadStudioExternalEntries();
+  const installExternalCli = options.installExternalCli ?? (async (name: string) => {
+    const cli = loadExternalClis().find((entry) => entry.name === name);
+    if (!cli) {
+      throw new Error(`Unknown external CLI: ${name}`);
+    }
+    return performExternalInstall(cli);
+  });
   const commandMap = createCommandMap(commands);
   const recipes = listStudioRecipes(commands);
   const recipeMap = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  function formatScalar(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return '';
+  }
+
+  function normalizeTemplateRows(input: {
+    sourceLabel: string;
+    commandLabel: string;
+    result: unknown;
+  }): Array<Record<string, unknown>> {
+    const rows = Array.isArray(input.result)
+      ? input.result
+      : isRecord(input.result) && Array.isArray(input.result.items)
+        ? input.result.items
+        : [];
+
+    const normalizedItems = rows
+      .filter((item: unknown) => isRecord(item))
+      .slice(0, 8)
+      .map((item: Record<string, unknown>) => {
+        const keys = Object.keys(item);
+        const titleKey = keys.find((key) => /(title|name|label|keyword|topic|tag|question)/i.test(key))
+          ?? keys.find((key) => typeof item[key] === 'string')
+          ?? null;
+        const urlKey = keys.find((key) => /(url|link|href)/i.test(key))
+          ?? null;
+        const rankKey = keys.find((key) => /(rank|position|index|no)/i.test(key) && typeof item[key] === 'number')
+          ?? null;
+        const metricKey = keys.find((key) =>
+          key !== titleKey
+          && key !== urlKey
+          && key !== rankKey
+          && typeof item[key] === 'number',
+        ) ?? null;
+
+        const summary = Object.entries(item)
+          .filter(([key, value]) =>
+            key !== titleKey
+            && key !== urlKey
+            && key !== rankKey
+            && key !== metricKey
+            && formatScalar(value),
+          )
+          .slice(0, 2)
+          .map(([key, value]) => `${key}: ${formatScalar(value)}`)
+          .join(' · ');
+
+        return {
+          source: input.sourceLabel,
+          title: titleKey ? formatScalar(item[titleKey]) : input.commandLabel,
+          rank: rankKey ? item[rankKey] : '',
+          metric: metricKey ? formatScalar(item[metricKey]) : '',
+          summary: summary || input.commandLabel,
+          url: urlKey ? formatScalar(item[urlKey]) : '',
+        };
+      });
+
+    if (normalizedItems.length > 0) {
+      return normalizedItems;
+    }
+
+    const fallbackSummary = isRecord(input.result)
+      ? Object.entries(input.result)
+        .filter(([, value]) => !Array.isArray(value) && !isRecord(value) && formatScalar(value))
+        .slice(0, 3)
+        .map(([key, value]) => `${key}: ${formatScalar(value)}`)
+        .join(' · ')
+      : '';
+
+    return [{
+      source: input.sourceLabel,
+      title: input.commandLabel,
+      rank: '',
+      metric: '',
+      summary: fallbackSummary || input.commandLabel,
+      url: '',
+    }];
+  }
+
+  async function executeRecipeTemplate(
+    recipeId: string,
+    overrides: Record<string, unknown> = {},
+  ): Promise<unknown> {
+    const recipe = recipeMap.get(recipeId);
+    if (!recipe) {
+      throw new Error(`Unknown recipe: ${recipeId}`);
+    }
+
+    const steps = recipe.steps?.length
+      ? recipe.steps
+      : [{ id: recipe.id, command: recipe.command, args: recipe.defaultArgs }];
+
+    if (steps.length === 1) {
+      const step = steps[0];
+      const command = commandMap.get(step.command);
+      if (!command) {
+        throw new Error(`Unknown command: ${step.command}`);
+      }
+      return execute(command, {
+        ...(step.args ?? recipe.defaultArgs),
+        ...overrides,
+      });
+    }
+
+    const items: Array<Record<string, unknown>> = [];
+    const errors: Array<{ source: string; message: string }> = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const step of steps) {
+      const command = commandMap.get(step.command);
+      if (!command) {
+        failureCount += 1;
+        errors.push({
+          source: step.command,
+          message: `Unknown command: ${step.command}`,
+        });
+        continue;
+      }
+
+      try {
+        const result = await execute(command, {
+          ...(step.args ?? {}),
+          ...overrides,
+        });
+        successCount += 1;
+        items.push(...normalizeTemplateRows({
+          sourceLabel: command.site,
+          commandLabel: command.description || `${command.site}/${command.name}`,
+          result,
+        }));
+      } catch (error) {
+        failureCount += 1;
+        errors.push({
+          source: command.site,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return {
+      items,
+      totalRows: items.length,
+      successCount,
+      failureCount,
+      errors,
+    };
+  }
 
   function resolveSourceName(sourceKind: StudioSnapshotSourceKind, sourceId: string, fallbackCommand: string): string {
     if (sourceKind === 'recipe') {
@@ -288,7 +538,9 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
     const started = Date.now();
 
     try {
-      const result = await execute(command, args);
+      const result = body.sourceKind === 'recipe'
+        ? await executeRecipeTemplate(body.sourceId, body.args ?? {})
+        : await execute(command, args);
       return store.recordSnapshot({
         sourceKind: body.sourceKind,
         sourceId: body.sourceId,
@@ -367,6 +619,40 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
         return;
       }
 
+      if (method === 'POST' && pathname.startsWith('/api/external/') && pathname.endsWith('/install')) {
+        const name = decodeURIComponent(pathname.replace('/api/external/', '').replace('/install', ''));
+        const current = externalClis.find((entry) => entry.name === name);
+        if (!current) {
+          notFound(res);
+          return;
+        }
+
+        const installed = await installExternalCli(name);
+        if (!installed) {
+          json(res, 400, { ok: false, error: `Failed to install ${name}` });
+          return;
+        }
+
+        if (options.externalClis) {
+          externalClis = externalClis.map((entry) =>
+            entry.name === name
+              ? { ...entry, installed: true }
+              : entry,
+          );
+        } else {
+          externalClis = loadStudioExternalEntries();
+        }
+
+        const entry = externalClis.find((item) => item.name === name);
+        if (!entry) {
+          notFound(res);
+          return;
+        }
+
+        json(res, 200, { ok: true, entry });
+        return;
+      }
+
       if (method === 'GET' && pathname === '/api/snapshots') {
         const url = new URL(req.url ?? '/', 'http://127.0.0.1');
         const sourceKind = url.searchParams.get('sourceKind') as StudioSnapshotSourceKind | null;
@@ -430,7 +716,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
       }
 
       if (method === 'POST' && pathname === '/api/jobs') {
-        const body = await readJsonBody<JobRequestBody>(req);
+        const body = validateJobRequestBody(await readJsonBody<JobRequestBody>(req));
         const job = store.saveJob(body);
         scheduler.sync();
         json(res, 200, { job });
@@ -484,6 +770,22 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
         const body = await readJsonBody<DoctorRequestBody>(req, {} as DoctorRequestBody);
         const result = await doctor({ live: body.live ?? false, sessions: body.sessions ?? false });
         json(res, 200, result);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/site-access') {
+        const body = await readJsonBody<SiteAccessRequestBody>(req, {} as SiteAccessRequestBody);
+        const requestedSites = Array.isArray(body.sites) ? body.sites.filter((value): value is string => typeof value === 'string' && value.length > 0) : [];
+        const access = await buildSiteAccessEntries({
+          sites: requestedSites,
+          commands,
+          doctor,
+          execute,
+        });
+        json(res, 200, {
+          doctor: access.doctor,
+          entries: access.entries,
+        });
         return;
       }
 
@@ -546,7 +848,7 @@ export async function startStudioServer(options: StartStudioServerOptions): Prom
 
       notFound(res);
     })().catch((error) => {
-      json(res, 500, {
+      json(res, getErrorStatusCode(error), {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });

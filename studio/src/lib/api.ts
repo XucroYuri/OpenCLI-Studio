@@ -12,6 +12,7 @@ import type {
   StudioPresetKind,
   StudioRecipe,
   StudioRegistryPayload,
+  StudioSiteAccessEntry,
   StudioSnapshotEntry,
   StudioSnapshotSourceKind,
 } from '../types';
@@ -69,6 +70,12 @@ export async function fetchPlugins(): Promise<{ entries: StudioPluginEntry[] }> 
 
 export async function fetchExternalClis(): Promise<{ entries: StudioExternalCliEntry[] }> {
   return requestJson<{ entries: StudioExternalCliEntry[] }>('/api/external');
+}
+
+export async function installExternalCli(name: string): Promise<{ ok: boolean; entry: StudioExternalCliEntry }> {
+  return requestJson<{ ok: boolean; entry: StudioExternalCliEntry }>(`/api/external/${encodeURIComponent(name)}/install`, {
+    method: 'POST',
+  });
 }
 
 export async function fetchRecipes(): Promise<{ recipes: StudioRecipe[] }> {
@@ -154,6 +161,14 @@ export async function fetchDoctor(input: { live?: boolean; sessions?: boolean } 
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+  });
+}
+
+export async function fetchSiteAccess(sites: string[]): Promise<{ doctor: StudioDoctorResult | null; entries: StudioSiteAccessEntry[] }> {
+  return requestJson<{ doctor: StudioDoctorResult | null; entries: StudioSiteAccessEntry[] }>('/api/site-access', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sites }),
   });
 }
 

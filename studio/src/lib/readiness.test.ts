@@ -1,19 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildCommandReadiness } from './readiness';
-import type { StudioCommandItem, StudioDoctorResult, StudioPluginEntry } from '../types';
+import { buildAvailabilitySummary, buildCommandReadiness, buildSiteAccessSummary } from './readiness';
+import type { StudioCommandItem, StudioDoctorResult, StudioExternalCliEntry, StudioPluginEntry, StudioSiteAccessEntry } from '../types';
 
 function makeCommand(overrides: Partial<StudioCommandItem>): StudioCommandItem {
-  const baseMeta = {
-    market: 'international',
-    siteCategory: 'news',
-    uiHints: {
-      supportsLists: true,
-      supportsDetails: false,
-      supportsCharts: true,
-      supportsTimeSeries: true,
-    },
-  } as const;
-
   return {
     command: 'google/trends',
     site: 'google',
@@ -27,7 +16,8 @@ function makeCommand(overrides: Partial<StudioCommandItem>): StudioCommandItem {
       mode: 'public',
       capability: 'discovery',
       risk: 'safe',
-      ...baseMeta,
+      market: 'international',
+      siteCategory: 'news',
       uiHints: {
         supportsLists: true,
         supportsDetails: false,
@@ -40,48 +30,107 @@ function makeCommand(overrides: Partial<StudioCommandItem>): StudioCommandItem {
 }
 
 describe('buildCommandReadiness', () => {
-  it('treats public built-in commands as locally runnable', () => {
+  it('treats public built-in commands as directly runnable', () => {
     expect(buildCommandReadiness({
       command: makeCommand({ command: 'google/trends' }),
       doctor: null,
       plugins: [],
+      externalClis: [],
+      registryCommands: [makeCommand({ command: 'google/trends' })],
     })).toEqual({
       tone: 'success',
-      title: 'Ready to run locally',
-      needsOps: false,
-      bullets: ['This command does not depend on the browser bridge.'],
+      title: 'Ready to run',
+      bullets: ['This command can run directly in the current shell.'],
+      actions: [],
     });
   });
 
-  it('warns when a browser-backed command has not been checked yet', () => {
-    expect(buildCommandReadiness({
-      command: makeCommand({
-        command: 'bilibili/hot',
-        site: 'bilibili',
+  it('adds auth and doctor actions for browser-backed commands that still need setup', () => {
+    const browserCommand = makeCommand({
+      command: 'spotify/status',
+      site: 'spotify',
+      name: 'status',
       browser: true,
       strategy: 'cookie',
       meta: {
         surface: 'builtin',
         mode: 'browser',
-        capability: 'discovery',
+        capability: 'account',
         risk: 'safe',
-        market: 'domestic',
-        siteCategory: 'social',
+        market: 'international',
+        siteCategory: 'media',
         uiHints: {
           supportsLists: true,
           supportsDetails: false,
-          supportsCharts: true,
-          supportsTimeSeries: true,
+          supportsCharts: false,
+          supportsTimeSeries: false,
         },
       },
-      }),
+    });
+    const loginCommand = makeCommand({
+      command: 'spotify/auth',
+      site: 'spotify',
+      name: 'auth',
+      description: 'Spotify auth',
+      args: [{
+        name: 'provider',
+        required: true,
+        choices: ['qr'],
+      }],
+      browser: true,
+      strategy: 'cookie',
+      meta: {
+        surface: 'builtin',
+        mode: 'browser',
+        capability: 'action',
+        risk: 'confirm',
+        market: 'international',
+        siteCategory: 'media',
+        uiHints: {
+          supportsLists: false,
+          supportsDetails: false,
+          supportsCharts: false,
+          supportsTimeSeries: false,
+        },
+      },
+    });
+
+    expect(buildCommandReadiness({
+      command: browserCommand,
       doctor: null,
       plugins: [],
+      externalClis: [],
+      registryCommands: [browserCommand, loginCommand],
     })).toEqual({
       tone: 'warning',
-      title: 'Browser bridge not checked yet',
-      needsOps: true,
-      bullets: ['Run Doctor in Ops before executing this browser-backed command.'],
+      title: 'System check not run yet',
+      bullets: [
+        'This command depends on the browser connection, extension, and a signed-in site session.',
+        'Run the system check once before you start.',
+        'You can run "Spotify auth" first to finish authorization.',
+      ],
+      actions: [
+        {
+          id: 'run-doctor',
+          kind: 'primary',
+          type: 'run-doctor',
+          label: 'Run system check',
+        },
+        {
+          id: 'open-ops',
+          kind: 'secondary',
+          type: 'open-ops',
+          label: 'Open Checks',
+        },
+        {
+          id: 'auth:spotify/auth',
+          kind: 'primary',
+          type: 'run-command',
+          label: 'Authorize now',
+          command: 'spotify/auth',
+          args: { provider: 'qr' },
+        },
+      ],
     });
   });
 
@@ -117,14 +166,14 @@ describe('buildCommandReadiness', () => {
         command: 'hot-digest/hot',
         site: 'hot-digest',
         browser: true,
-      strategy: 'cookie',
+        strategy: 'cookie',
         meta: {
           surface: 'plugin',
           mode: 'browser',
           capability: 'discovery',
           risk: 'safe',
           market: 'domestic',
-          siteCategory: 'ecommerce',
+          siteCategory: 'video',
           uiHints: {
             supportsLists: true,
             supportsDetails: false,
@@ -135,49 +184,318 @@ describe('buildCommandReadiness', () => {
       }),
       doctor,
       plugins,
+      externalClis: [],
+      registryCommands: [],
     })).toEqual({
       tone: 'error',
-      title: 'Execution blocked by local dependencies',
-      needsOps: true,
+      title: 'Browser extension not connected',
       bullets: [
-        'Browser daemon is offline.',
-        'Browser extension is not connected.',
-        'Browser connectivity probe failed: Timed out',
-        'Plugin coverage is incomplete: 1 of 2 declared commands are registered.',
-        'Plugin is installed from a local path and may drift from the current workspace state.',
+        'This command depends on the browser connection, extension, and a signed-in site session.',
+        'The local browser service is offline.',
+        'The browser extension is not connected.',
+        'Browser connection test failed: Timed out',
+        'Plugin registered 1 of 2 declared commands.',
+        'This plugin uses a local path and may be out of sync.',
+      ],
+      actions: [
+        {
+          id: 'run-doctor',
+          kind: 'primary',
+          type: 'run-doctor',
+          label: 'Run system check',
+        },
+        {
+          id: 'open-ops',
+          kind: 'secondary',
+          type: 'open-ops',
+          label: 'Open Checks',
+        },
       ],
     });
   });
 
-  it('marks desktop commands as requiring manual runtime validation', () => {
+  it('offers dependency install and homepage actions for matching external tools', () => {
+    const externalClis: StudioExternalCliEntry[] = [
+      {
+        name: 'gh',
+        binary: 'gh',
+        description: 'GitHub CLI',
+        homepage: 'https://cli.github.com',
+        tags: ['github', 'git'],
+        installed: false,
+        installAvailable: true,
+        installCommand: 'brew install gh',
+      },
+    ];
+
     expect(buildCommandReadiness({
       command: makeCommand({
-        command: 'notion/search',
-        site: 'notion',
-        browser: false,
-      strategy: 'ui',
+        command: 'github/search',
+        site: 'github',
+      }),
+      doctor: null,
+      plugins: [],
+      externalClis,
+      registryCommands: [],
+    })).toEqual({
+      tone: 'warning',
+      title: 'Install "gh" first',
+      bullets: [
+        'This command can run directly in the current shell.',
+        'This command depends on "gh", which is not installed in the current environment.',
+      ],
+      actions: [
+        {
+          id: 'install:gh',
+          kind: 'primary',
+          type: 'install-external',
+          label: 'Install dependency',
+          externalName: 'gh',
+        },
+        {
+          id: 'homepage:gh',
+          kind: 'secondary',
+          type: 'open-url',
+          label: 'Open install guide',
+          url: 'https://cli.github.com',
+        },
+      ],
+    });
+  });
+
+  it('detects description-based prerequisites and offers a fix path', () => {
+    const externalClis: StudioExternalCliEntry[] = [
+      {
+        name: 'yt-dlp',
+        binary: 'yt-dlp',
+        description: 'Downloader',
+        homepage: 'https://github.com/yt-dlp/yt-dlp',
+        tags: ['download', 'video'],
+        installed: false,
+        installAvailable: true,
+        installCommand: 'brew install yt-dlp',
+      },
+    ];
+
+    expect(buildCommandReadiness({
+      command: makeCommand({
+        command: 'bilibili/download',
+        site: 'bilibili',
+        name: 'download',
+        description: 'Download Bilibili video (requires yt-dlp)',
+        browser: true,
+        strategy: 'cookie',
         meta: {
           surface: 'builtin',
-          mode: 'desktop',
-          capability: 'search',
+          mode: 'browser',
+          capability: 'asset',
+          risk: 'safe',
+          market: 'domestic',
+          siteCategory: 'video',
+          uiHints: {
+            supportsLists: false,
+            supportsDetails: true,
+            supportsCharts: false,
+            supportsTimeSeries: false,
+          },
+        },
+      }),
+      doctor: {
+        daemonRunning: true,
+        extensionConnected: true,
+        connectivity: { ok: true, durationMs: 20 },
+        sessions: [{ workspace: '/tmp', windowId: 1, tabCount: 2, idleMsRemaining: 1000 }],
+        issues: [],
+      },
+      plugins: [],
+      externalClis,
+      registryCommands: [],
+    })).toEqual({
+      tone: 'warning',
+      title: 'Install "yt-dlp" first',
+      bullets: [
+        'This command depends on the browser connection, extension, and a signed-in site session.',
+        'Browser connection is ready.',
+        'This command depends on "yt-dlp", which is not installed in the current environment.',
+      ],
+      actions: [
+        {
+          id: 'install:yt-dlp',
+          kind: 'primary',
+          type: 'install-external',
+          label: 'Install dependency',
+          externalName: 'yt-dlp',
+        },
+        {
+          id: 'homepage:yt-dlp',
+          kind: 'secondary',
+          type: 'open-url',
+          label: 'Open install guide',
+          url: 'https://github.com/yt-dlp/yt-dlp',
+        },
+      ],
+    });
+  });
+
+  it('uses explicit site access state to guide browser commands to the sign-in entry', () => {
+    const siteAccess: StudioSiteAccessEntry = {
+      site: 'spotify',
+      browserRequired: true,
+      state: 'signed_out',
+      authCommand: 'spotify/auth',
+      checkCommand: 'spotify/status',
+      configCommand: null,
+      reason: 'Not logged in',
+      checkedAt: '2026-04-15T00:00:00.000Z',
+    };
+
+    expect(buildCommandReadiness({
+      command: makeCommand({
+        command: 'spotify/following',
+        site: 'spotify',
+        name: 'following',
+        browser: true,
+        strategy: 'cookie',
+        meta: {
+          surface: 'builtin',
+          mode: 'browser',
+          capability: 'account',
           risk: 'safe',
           market: 'international',
-          siteCategory: 'tools',
+          siteCategory: 'media',
           uiHints: {
             supportsLists: true,
-            supportsDetails: false,
+            supportsDetails: true,
+            supportsCharts: false,
+            supportsTimeSeries: false,
+          },
+        },
+      }),
+      doctor: {
+        daemonRunning: true,
+        extensionConnected: true,
+        connectivity: { ok: true, durationMs: 20 },
+        sessions: [{ workspace: '/tmp', windowId: 1, tabCount: 2, idleMsRemaining: 1000 }],
+        issues: [],
+      },
+      siteAccess,
+      plugins: [],
+      externalClis: [],
+      registryCommands: [],
+      siteLabel: 'Spotify',
+    })).toEqual({
+      tone: 'warning',
+      title: 'Spotify account not signed in',
+      bullets: [
+        'This command depends on the browser connection, extension, and a signed-in site session.',
+        'No active sign-in was found for Spotify.',
+      ],
+      actions: [
+        {
+          id: 'auth:spotify/auth',
+          kind: 'primary',
+          type: 'open-command',
+          label: 'Open authorization',
+          command: 'spotify/auth',
+        },
+        {
+          id: 'check:spotify/status',
+          kind: 'secondary',
+          type: 'open-command',
+          label: 'Open sign-in check',
+          command: 'spotify/status',
+        },
+      ],
+    });
+  });
+
+  it('builds a compact site summary from site access state', () => {
+    expect(buildSiteAccessSummary({
+      siteAccess: {
+        site: 'bilibili',
+        browserRequired: true,
+        state: 'signed_in',
+        authCommand: 'bilibili/login',
+        checkCommand: 'bilibili/me',
+        configCommand: null,
+        reason: null,
+        checkedAt: '2026-04-15T00:00:00.000Z',
+      },
+      siteLabel: 'B站',
+    })).toEqual({
+      tone: 'success',
+      label: 'B站 signed in',
+      detail: 'B站 session looks ready.',
+      action: null,
+    });
+  });
+
+  it('uses the most actionable detail in compact availability summaries', () => {
+    const readiness = buildCommandReadiness({
+      command: makeCommand({
+        command: 'spotify/following',
+        site: 'spotify',
+        name: 'following',
+        browser: true,
+        strategy: 'cookie',
+        meta: {
+          surface: 'builtin',
+          mode: 'browser',
+          capability: 'account',
+          risk: 'safe',
+          market: 'international',
+          siteCategory: 'media',
+          uiHints: {
+            supportsLists: true,
+            supportsDetails: true,
             supportsCharts: false,
             supportsTimeSeries: false,
           },
         },
       }),
       doctor: null,
+      siteAccess: null,
       plugins: [],
+      externalClis: [],
+      registryCommands: [],
+    });
+
+    expect(buildAvailabilitySummary(readiness)).toEqual({
+      tone: 'warning',
+      label: 'System check not run yet',
+      detail: 'Run the system check once before you start.',
+      action: {
+        id: 'run-doctor',
+        kind: 'primary',
+        type: 'run-doctor',
+        label: 'Run system check',
+      },
+    });
+  });
+
+  it('maps browser-blocked site summaries to specific browser causes', () => {
+    expect(buildSiteAccessSummary({
+      siteAccess: {
+        site: 'bilibili',
+        browserRequired: true,
+        state: 'browser_blocked',
+        authCommand: 'bilibili/login',
+        checkCommand: 'bilibili/me',
+        configCommand: null,
+        reason: 'Browser Bridge extension not connected',
+        checkedAt: '2026-04-15T00:00:00.000Z',
+      },
+      siteLabel: 'B站',
     })).toEqual({
-      tone: 'info',
-      title: 'Desktop runtime must be checked manually',
-      needsOps: false,
-      bullets: ['Studio cannot verify whether the target desktop app is running or authenticated.'],
+      tone: 'error',
+      label: 'B站 browser extension not connected',
+      detail: 'Install or reconnect the browser extension before checking B站.',
+      action: {
+        id: 'ops:bilibili',
+        kind: 'primary',
+        type: 'open-ops',
+        label: 'Open Checks',
+      },
     });
   });
 });
