@@ -148,6 +148,17 @@ describe('doctor report rendering', () => {
     ]));
   });
 
+  it('points missing-extension guidance at the Studio fork releases', async () => {
+    mockGetDaemonHealth.mockResolvedValueOnce({ state: 'no-extension', status: { extensionConnected: false } });
+    mockGetDaemonHealth.mockResolvedValueOnce({ state: 'no-extension', status: { extensionConnected: false } });
+
+    const report = await runBrowserDoctor({ live: false });
+
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.stringContaining('https://github.com/XucroYuri/OpenCLI-Studio/releases'),
+    ]));
+  });
+
   it('reports daemon flapping when live check succeeds but daemon disappears afterward', async () => {
     // Live check succeeds
     mockConnect.mockResolvedValueOnce({

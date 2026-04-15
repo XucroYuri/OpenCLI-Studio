@@ -5,6 +5,12 @@
 /** Default daemon port for HTTP/WebSocket communication with browser extension */
 export const DEFAULT_DAEMON_PORT = 19825;
 
+/** Browser Bridge release page for the current OpenCLI Studio fork. */
+export const BROWSER_BRIDGE_RELEASES_URL = 'https://github.com/XucroYuri/OpenCLI-Studio/releases';
+
+/** GitHub API endpoint used for Browser Bridge release/version checks. */
+export const BROWSER_BRIDGE_RELEASES_API_URL = 'https://api.github.com/repos/XucroYuri/OpenCLI-Studio/releases?per_page=20';
+
 
 /** URL query params that are volatile/ephemeral and should be stripped from patterns */
 export const VOLATILE_PARAMS = new Set([

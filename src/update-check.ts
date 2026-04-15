@@ -13,13 +13,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { styleText } from 'node:util';
+import { BROWSER_BRIDGE_RELEASES_API_URL } from './constants.js';
 import { PKG_VERSION } from './version.js';
 
 const CACHE_DIR = path.join(os.homedir(), '.opencli');
 const CACHE_FILE = path.join(CACHE_DIR, 'update-check.json');
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
 const NPM_REGISTRY_URL = 'https://registry.npmjs.org/@jackwener/opencli/latest';
-const GITHUB_RELEASES_URL = 'https://api.github.com/repos/jackwener/OpenCLI/releases?per_page=20';
 
 interface UpdateCache {
   lastCheck: number;
@@ -116,7 +116,7 @@ async function fetchLatestExtensionVersion(): Promise<string | undefined> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(GITHUB_RELEASES_URL, {
+    const res = await fetch(BROWSER_BRIDGE_RELEASES_API_URL, {
       signal: controller.signal,
       headers: { 'User-Agent': `opencli/${PKG_VERSION}`, Accept: 'application/vnd.github+json' },
     });
