@@ -491,10 +491,10 @@ describe('buildCommandReadiness', () => {
       label: 'B站 browser extension not connected',
       detail: 'Install or reconnect the browser extension before checking B站.',
       action: {
-        id: 'ops:bilibili',
+        id: 'doctor:bilibili',
         kind: 'primary',
-        type: 'open-ops',
-        label: 'Open Checks',
+        type: 'run-doctor',
+        label: 'Run system check',
       },
     });
   });

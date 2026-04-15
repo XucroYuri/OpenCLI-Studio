@@ -401,10 +401,10 @@ export function buildSiteAccessSummary(input: {
             ? localizeTextWithParams(t, 'readiness.siteDetail.browserConnectivity', `The browser connection test failed. Fix the connection before checking ${resolvedSiteLabel}.`, siteParams)
             : localizeTextWithParams(t, 'readiness.siteDetail.browserBlocked', `Fix the browser connection before checking ${resolvedSiteLabel}.`, siteParams),
       action: {
-        id: `ops:${siteAccess.site}`,
+        id: `doctor:${siteAccess.site}`,
         kind: 'primary',
-        type: 'open-ops',
-        label: localizeText(t, 'readiness.action.openOps', 'Open Checks'),
+        type: 'run-doctor',
+        label: localizeText(t, 'readiness.action.runDoctor', 'Run system check'),
       },
     };
   }
