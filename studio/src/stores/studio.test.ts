@@ -1,7 +1,74 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const {
+  mockCaptureSnapshot,
+  mockDeleteJob,
+  mockDeletePreset,
+  mockExecuteCommand,
+  mockFetchDoctor,
+  mockFetchEnv,
+  mockFetchExternalClis,
+  mockFetchFavorites,
+  mockFetchHistory,
+  mockFetchJobs,
+  mockFetchPresets,
+  mockFetchPlugins,
+  mockFetchRecipes,
+  mockFetchRegistry,
+  mockFetchSiteAccess,
+  mockFetchSnapshots,
+  mockRunJobNow,
+  mockSaveJob,
+  mockSavePreset,
+  mockSetFavorite,
+} = vi.hoisted(() => ({
+  mockCaptureSnapshot: vi.fn(),
+  mockDeleteJob: vi.fn(),
+  mockDeletePreset: vi.fn(),
+  mockExecuteCommand: vi.fn(),
+  mockFetchDoctor: vi.fn(),
+  mockFetchEnv: vi.fn(),
+  mockFetchExternalClis: vi.fn(),
+  mockFetchFavorites: vi.fn(),
+  mockFetchHistory: vi.fn(),
+  mockFetchJobs: vi.fn(),
+  mockFetchPresets: vi.fn(),
+  mockFetchPlugins: vi.fn(),
+  mockFetchRecipes: vi.fn(),
+  mockFetchRegistry: vi.fn(),
+  mockFetchSiteAccess: vi.fn(),
+  mockFetchSnapshots: vi.fn(),
+  mockRunJobNow: vi.fn(),
+  mockSaveJob: vi.fn(),
+  mockSavePreset: vi.fn(),
+  mockSetFavorite: vi.fn(),
+}));
+
+vi.mock('../lib/api', () => ({
+  captureSnapshot: mockCaptureSnapshot,
+  deleteJob: mockDeleteJob,
+  deletePreset: mockDeletePreset,
+  executeCommand: mockExecuteCommand,
+  fetchDoctor: mockFetchDoctor,
+  fetchEnv: mockFetchEnv,
+  fetchExternalClis: mockFetchExternalClis,
+  fetchFavorites: mockFetchFavorites,
+  fetchHistory: mockFetchHistory,
+  fetchJobs: mockFetchJobs,
+  fetchPresets: mockFetchPresets,
+  fetchPlugins: mockFetchPlugins,
+  fetchRecipes: mockFetchRecipes,
+  fetchRegistry: mockFetchRegistry,
+  fetchSiteAccess: mockFetchSiteAccess,
+  fetchSnapshots: mockFetchSnapshots,
+  runJobNow: mockRunJobNow,
+  saveJob: mockSaveJob,
+  savePreset: mockSavePreset,
+  setFavorite: mockSetFavorite,
+}));
+
 import { useStudioStore } from './studio';
-import type { StudioCommandItem } from '../types';
+import type { ExecuteResponse, StudioCommandItem, StudioHistoryEntry } from '../types';
 
 function makeCommand(overrides: Partial<StudioCommandItem> = {}): StudioCommandItem {
   return {
@@ -30,9 +97,37 @@ function makeCommand(overrides: Partial<StudioCommandItem> = {}): StudioCommandI
   };
 }
 
+function makeHistoryEntry(overrides: Partial<StudioHistoryEntry> = {}): StudioHistoryEntry {
+  return {
+    id: 1,
+    command: 'google/trends',
+    site: 'google',
+    name: 'trends',
+    status: 'success',
+    args: {},
+    result: { rows: [{ title: 'Launch week' }] },
+    error: null,
+    startedAt: '2026-04-16T00:00:00.000Z',
+    finishedAt: '2026-04-16T00:00:00.750Z',
+    durationMs: 750,
+    ...overrides,
+  };
+}
+
+function makeExecuteResponse(overrides: Partial<ExecuteResponse> = {}): ExecuteResponse {
+  const historyEntry = makeHistoryEntry(overrides.historyEntry);
+  return {
+    command: historyEntry.command,
+    result: historyEntry.result,
+    historyEntry,
+    ...overrides,
+  };
+}
+
 describe('useStudioStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    vi.clearAllMocks();
   });
 
   it('keeps guarded workbench commands hidden until advanced mode is enabled', () => {
@@ -163,5 +258,24 @@ describe('useStudioStore', () => {
     store.setAdvancedMode(false);
 
     expect(store.selectedCommand).toBe('bilibili/hot');
+  });
+
+  it('clears stale execution output before a rerun fails', async () => {
+    const store = useStudioStore();
+    const firstResponse = makeExecuteResponse();
+
+    mockExecuteCommand
+      .mockResolvedValueOnce(firstResponse)
+      .mockRejectedValueOnce(new Error('Bridge session expired'));
+
+    await expect(store.runCommand('google/trends', { region: 'US' })).resolves.toEqual(firstResponse);
+
+    expect(store.lastExecution).toEqual(firstResponse);
+    expect(store.executionError).toBeNull();
+
+    await expect(store.runCommand('google/trends', { region: 'CN' })).rejects.toThrow('Bridge session expired');
+
+    expect(store.lastExecution).toBeNull();
+    expect(store.executionError).toBe('Bridge session expired');
   });
 });

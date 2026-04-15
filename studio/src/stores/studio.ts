@@ -312,6 +312,7 @@ export const useStudioStore = defineStore('studio', () => {
   async function runCommand(command: string, args: Record<string, unknown>): Promise<ExecuteResponse> {
     runningCommand.value = true;
     executionError.value = null;
+    lastExecution.value = null;
 
     try {
       const response = await postExecuteCommand(command, args);
