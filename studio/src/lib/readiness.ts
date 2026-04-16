@@ -71,6 +71,44 @@ function selectAvailabilityDetail(readiness: CommandReadiness): string | null {
   return readiness.bullets[readiness.bullets.length - 1] ?? null;
 }
 
+function buildBrowserBlockedCopy(input: {
+  site: string | null | undefined;
+  siteLabel?: string | null;
+  reason: string | null | undefined;
+  t: TranslateFn | null;
+}): { title: string; detail: string } {
+  const { site, siteLabel, reason, t } = input;
+  const issueKind = browserIssueKind(reason);
+  const resolvedSiteLabel = resolveSiteLabel(site, siteLabel);
+  const siteParams = { site: resolvedSiteLabel };
+
+  if (issueKind === 'extension') {
+    return {
+      title: localizeTextWithParams(t, 'readiness.siteState.browserExtension', `${resolvedSiteLabel} browser extension not connected`, siteParams),
+      detail: localizeTextWithParams(t, 'readiness.siteDetail.browserExtension', `Install or reconnect the browser extension before checking ${resolvedSiteLabel}.`, siteParams),
+    };
+  }
+
+  if (issueKind === 'daemon') {
+    return {
+      title: localizeTextWithParams(t, 'readiness.siteState.browserService', `${resolvedSiteLabel} local browser service is offline`, siteParams),
+      detail: localizeTextWithParams(t, 'readiness.siteDetail.browserService', `Start the local browser service before checking ${resolvedSiteLabel}.`, siteParams),
+    };
+  }
+
+  if (issueKind === 'connectivity') {
+    return {
+      title: localizeTextWithParams(t, 'readiness.siteState.browserConnectivity', `${resolvedSiteLabel} browser connection failed`, siteParams),
+      detail: localizeTextWithParams(t, 'readiness.siteDetail.browserConnectivity', `The browser connection test failed. Fix the connection before checking ${resolvedSiteLabel}.`, siteParams),
+    };
+  }
+
+  return {
+    title: localizeTextWithParams(t, 'readiness.siteState.browserBlocked', `${resolvedSiteLabel} browser connection issue`, siteParams),
+    detail: localizeTextWithParams(t, 'readiness.siteDetail.browserBlocked', `Fix the browser connection before checking ${resolvedSiteLabel}.`, siteParams),
+  };
+}
+
 interface SiteSetupCommand {
   actionKind: 'auth' | 'check' | 'config';
   command: StudioCommandItem;
@@ -383,23 +421,16 @@ export function buildSiteAccessSummary(input: {
   }
 
   if (siteAccess.state === 'browser_blocked') {
-    const issueKind = browserIssueKind(siteAccess.reason);
+    const blocked = buildBrowserBlockedCopy({
+      site: siteAccess.site,
+      siteLabel,
+      reason: siteAccess.reason,
+      t,
+    });
     return {
       tone: 'error',
-      label: issueKind === 'extension'
-        ? localizeTextWithParams(t, 'readiness.siteState.browserExtension', `${resolvedSiteLabel} browser extension not connected`, siteParams)
-        : issueKind === 'daemon'
-          ? localizeTextWithParams(t, 'readiness.siteState.browserService', `${resolvedSiteLabel} local browser service is offline`, siteParams)
-          : issueKind === 'connectivity'
-            ? localizeTextWithParams(t, 'readiness.siteState.browserConnectivity', `${resolvedSiteLabel} browser connection failed`, siteParams)
-            : localizeTextWithParams(t, 'readiness.siteState.browserBlocked', `${resolvedSiteLabel} browser connection issue`, siteParams),
-      detail: issueKind === 'extension'
-        ? localizeTextWithParams(t, 'readiness.siteDetail.browserExtension', `Install or reconnect the browser extension before checking ${resolvedSiteLabel}.`, siteParams)
-        : issueKind === 'daemon'
-          ? localizeTextWithParams(t, 'readiness.siteDetail.browserService', `Start the local browser service before checking ${resolvedSiteLabel}.`, siteParams)
-          : issueKind === 'connectivity'
-            ? localizeTextWithParams(t, 'readiness.siteDetail.browserConnectivity', `The browser connection test failed. Fix the connection before checking ${resolvedSiteLabel}.`, siteParams)
-            : localizeTextWithParams(t, 'readiness.siteDetail.browserBlocked', `Fix the browser connection before checking ${resolvedSiteLabel}.`, siteParams),
+      label: blocked.title,
+      detail: blocked.detail,
       action: {
         id: `doctor:${siteAccess.site}`,
         kind: 'primary',
@@ -697,6 +728,28 @@ export function buildCommandReadiness(input: {
       tone = 'info';
       title = localizeTextWithParams(t, 'readiness.title.site.configEntry', `${resolvedSiteLabel} setup command`, siteParams);
       pushUnique(bullets, localizeTextWithParams(t, 'readiness.bullet.siteConfigEntry', `Use this command to complete the setup for ${resolvedSiteLabel} before running dependent commands.`, siteParams));
+    } else if (siteAccess?.state === 'browser_blocked') {
+      const blocked = buildBrowserBlockedCopy({
+        site: command.site,
+        siteLabel: resolvedSiteLabel,
+        reason: siteAccess.reason,
+        t,
+      });
+      tone = 'error';
+      title = blocked.title;
+      pushUnique(bullets, blocked.detail);
+      pushAction(actions, {
+        id: 'run-doctor',
+        kind: 'primary',
+        type: 'run-doctor',
+        label: localizeText(t, 'readiness.action.runDoctor', 'Run system check'),
+      });
+      pushAction(actions, {
+        id: 'open-ops',
+        kind: 'secondary',
+        type: 'open-ops',
+        label: localizeText(t, 'readiness.action.openOps', 'Open Checks'),
+      });
     } else if (siteAccess?.state === 'signed_out') {
       tone = tone === 'error' ? tone : 'warning';
       if (tone !== 'error') {

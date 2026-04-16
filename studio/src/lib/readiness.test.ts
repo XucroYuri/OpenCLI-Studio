@@ -409,6 +409,76 @@ describe('buildCommandReadiness', () => {
     });
   });
 
+  it('surfaces browser-blocked site access in command readiness banners', () => {
+    const siteAccess: StudioSiteAccessEntry = {
+      site: 'spotify',
+      browserRequired: true,
+      state: 'browser_blocked',
+      authCommand: 'spotify/auth',
+      checkCommand: 'spotify/status',
+      configCommand: null,
+      reason: 'Browser Bridge extension not connected',
+      checkedAt: '2026-04-15T00:00:00.000Z',
+    };
+
+    expect(buildCommandReadiness({
+      command: makeCommand({
+        command: 'spotify/following',
+        site: 'spotify',
+        name: 'following',
+        browser: true,
+        strategy: 'cookie',
+        meta: {
+          surface: 'builtin',
+          mode: 'browser',
+          capability: 'account',
+          risk: 'safe',
+          market: 'international',
+          siteCategory: 'media',
+          uiHints: {
+            supportsLists: true,
+            supportsDetails: true,
+            supportsCharts: false,
+            supportsTimeSeries: false,
+          },
+        },
+      }),
+      doctor: {
+        daemonRunning: true,
+        extensionConnected: true,
+        connectivity: { ok: true, durationMs: 20 },
+        sessions: [{ workspace: '/tmp', windowId: 1, tabCount: 2, idleMsRemaining: 1000 }],
+        issues: [],
+      },
+      siteAccess,
+      plugins: [],
+      externalClis: [],
+      registryCommands: [],
+      siteLabel: 'Spotify',
+    })).toEqual({
+      tone: 'error',
+      title: 'Spotify browser extension not connected',
+      bullets: [
+        'This command depends on the browser connection, extension, and a signed-in site session.',
+        'Install or reconnect the browser extension before checking Spotify.',
+      ],
+      actions: [
+        {
+          id: 'run-doctor',
+          kind: 'primary',
+          type: 'run-doctor',
+          label: 'Run system check',
+        },
+        {
+          id: 'open-ops',
+          kind: 'secondary',
+          type: 'open-ops',
+          label: 'Open Checks',
+        },
+      ],
+    });
+  });
+
   it('builds a compact site summary from site access state', () => {
     expect(buildSiteAccessSummary({
       siteAccess: {
