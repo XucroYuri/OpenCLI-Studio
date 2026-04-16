@@ -13,6 +13,7 @@ const {
   mockRenderCascadeResult,
   mockGetBrowserFactory,
   mockBrowserSession,
+  mockRunStudioCommand,
 } = vi.hoisted(() => ({
   mockExploreUrl: vi.fn(),
   mockRenderExploreSummary: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockRenderCascadeResult: vi.fn(),
   mockGetBrowserFactory: vi.fn(() => ({ name: 'BrowserFactory' })),
   mockBrowserSession: vi.fn(),
+  mockRunStudioCommand: vi.fn(),
 }));
 
 vi.mock('./explore.js', () => ({
@@ -51,6 +53,10 @@ vi.mock('./runtime.js', () => ({
   browserSession: mockBrowserSession,
 }));
 
+vi.mock('./studio/command.js', () => ({
+  runStudioCommand: mockRunStudioCommand,
+}));
+
 import { createProgram, findPackageRoot, resolveBrowserVerifyInvocation } from './cli.js';
 
 describe('built-in browser commands verbose wiring', () => {
@@ -76,6 +82,7 @@ describe('built-in browser commands verbose wiring', () => {
       } as unknown as IPage;
       return fn(page);
     });
+    mockRunStudioCommand.mockReset().mockResolvedValue(undefined);
   });
 
   it('enables OPENCLI_VERBOSE for explore via the real CLI command', async () => {
@@ -141,6 +148,32 @@ describe('built-in browser commands verbose wiring', () => {
   });
 
   consoleLogSpy.mockClear();
+});
+
+describe('studio command wiring', () => {
+  it('dispatches opencli studio with browser opening enabled by default', async () => {
+    const program = createProgram('', '');
+
+    await program.parseAsync(['node', 'opencli', 'studio', '--port', '4310']);
+
+    expect(mockRunStudioCommand).toHaveBeenCalledWith({
+      mode: 'open',
+      openBrowser: true,
+      port: 4310,
+    });
+  });
+
+  it('dispatches opencli studio serve without auto-opening a browser', async () => {
+    const program = createProgram('', '');
+
+    await program.parseAsync(['node', 'opencli', 'studio', 'serve', '--port', '4311']);
+
+    expect(mockRunStudioCommand).toHaveBeenCalledWith({
+      mode: 'serve',
+      openBrowser: false,
+      port: 4311,
+    });
+  });
 });
 
 describe('resolveBrowserVerifyInvocation', () => {

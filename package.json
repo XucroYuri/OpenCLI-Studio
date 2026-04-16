@@ -32,6 +32,7 @@
   },
   "files": [
     "dist/src/",
+    "dist/studio/",
     "clis/",
     "cli-manifest.json",
     "scripts/",
@@ -41,7 +42,7 @@
   "scripts": {
     "dev": "tsx src/main.ts",
     "dev:bun": "bun src/main.ts",
-    "build": "npm run clean-dist && tsc && npm run copy-yaml && npm run build-manifest",
+    "build": "npm run clean-dist && tsc && npm run copy-yaml && npm run build-manifest && npm run studio:build",
     "build-manifest": "node dist/src/build-manifest.js",
     "clean-dist": "node scripts/clean-dist.cjs",
     "copy-yaml": "node scripts/copy-yaml.cjs",
@@ -50,7 +51,15 @@
     "preuninstall": "node -e \"fetch('http://127.0.0.1:'+(process.env.OPENCLI_DAEMON_PORT||'19825')+'/shutdown',{method:'POST',headers:{'X-OpenCLI':'1'},signal:AbortSignal.timeout(3000)}).catch(()=>{})\" || true",
     "postinstall": "node scripts/postinstall.js || true; node scripts/fetch-adapters.js || true",
     "typecheck": "tsc --noEmit",
-    "prepare": "[ -d src ] && npm run build || true",
+    "studio:backend": "npm run dev -- studio serve --port 3113",
+    "studio:frontend": "vite --config studio/vite.config.ts --host 127.0.0.1 --port 4173",
+    "studio:dev": "vite --config studio/vite.config.ts",
+    "studio:dev:all": "node scripts/studio-dev-all.cjs",
+    "studio:build": "vite build --config studio/vite.config.ts",
+    "studio:test": "vitest run --config studio/vitest.config.ts",
+    "studio:typecheck": "vue-tsc --noEmit -p studio/tsconfig.json",
+    "studio:verify": "npm run typecheck && npm run studio:typecheck && vitest run --project unit src/studio/**/*.test.ts src/browser/daemon-client.test.ts src/commands/daemon.test.ts && npm run studio:test",
+    "prepare": "node scripts/prepare.cjs",
     "prepublishOnly": "npm run build",
     "test": "vitest run --project unit --project extension --project adapter",
     "test:bun": "bun vitest run --project unit --project extension --project adapter",
@@ -71,7 +80,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jackwener/opencli.git"
+    "url": "git+https://github.com/XucroYuri/OpenCLI-Studio.git"
   },
   "dependencies": {
     "cli-table3": "^0.6.5",
@@ -86,9 +95,16 @@
     "@types/node": "^25.5.2",
     "@types/turndown": "^5.0.6",
     "@types/ws": "^8.5.13",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "naive-ui": "^2.44.1",
+    "pinia": "^3.0.4",
     "tsx": "^4.19.3",
     "typescript": "^6.0.2",
+    "vite": "^8.0.8",
     "vitepress": "^1.6.4",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "vue": "^3.5.30",
+    "vue-router": "^4.6.4",
+    "vue-tsc": "^2.2.12"
   }
 }

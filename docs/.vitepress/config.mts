@@ -148,6 +148,7 @@ export default defineConfig({
                 { text: 'Contributing', link: '/developer/contributing' },
                 { text: 'Testing', link: '/developer/testing' },
                 { text: 'Architecture', link: '/developer/architecture' },
+                { text: 'Studio', link: '/developer/studio' },
                 { text: 'YAML Adapter Guide (Deprecated)', link: '/developer/yaml-adapter' },
                 { text: 'TypeScript Adapter Guide', link: '/developer/ts-adapter' },
                 { text: 'AI Workflow', link: '/developer/ai-workflow' },

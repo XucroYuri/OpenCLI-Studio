@@ -1,0 +1,118 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildInsightQuery,
+  buildRegistryQuery,
+  buildWorkbenchQuery,
+  parseInsightQuery,
+  parseRegistryQuery,
+  parseWorkbenchQuery,
+} from './routes';
+
+describe('parseRegistryQuery', () => {
+  it('hydrates registry filters from route query values', () => {
+    expect(parseRegistryQuery({
+      q: 'trend',
+      site: 'google',
+      market: 'domestic',
+      siteCategory: 'news',
+      surface: 'plugin',
+      mode: 'public',
+      capability: 'discovery',
+      purpose: 'analysis',
+      risk: 'safe',
+      charts: '1',
+      advanced: '1',
+    })).toEqual({
+      search: 'trend',
+      site: 'google',
+      market: 'domestic',
+      siteCategory: 'news',
+      surface: 'plugin',
+      mode: 'public',
+      capability: 'discovery',
+      purpose: 'analysis',
+      risk: 'safe',
+      supportsChartsOnly: true,
+      advancedMode: true,
+    });
+  });
+
+  it('normalizes legacy site category aliases from saved links', () => {
+    expect(parseRegistryQuery({
+      siteCategory: 'ecommerce',
+    }).siteCategory).toBe('commerce');
+  });
+});
+
+describe('buildRegistryQuery', () => {
+  it('serializes only non-default registry state into the route query', () => {
+    expect(buildRegistryQuery({
+      search: 'trend',
+      site: 'google',
+      market: 'domestic',
+      siteCategory: 'news',
+      surface: 'plugin',
+      mode: 'public',
+      capability: 'all',
+      purpose: 'all',
+      risk: 'all',
+      supportsChartsOnly: true,
+      advancedMode: true,
+    })).toEqual({
+      q: 'trend',
+      site: 'google',
+      market: 'domestic',
+      siteCategory: 'news',
+      surface: 'plugin',
+      mode: 'public',
+      charts: '1',
+      advanced: '1',
+    });
+  });
+});
+
+describe('workbench route helpers', () => {
+  it('round-trips command selection and advanced mode', () => {
+    expect(parseWorkbenchQuery({
+      command: 'google/trends',
+      advanced: '1',
+    })).toEqual({
+      command: 'google/trends',
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
+      advancedMode: true,
+    });
+
+    expect(buildWorkbenchQuery({
+      command: 'google/trends',
+      search: '',
+      market: 'all',
+      siteCategory: 'all',
+      site: '',
+      advancedMode: false,
+    })).toEqual({
+      command: 'google/trends',
+    });
+  });
+});
+
+describe('insight route helpers', () => {
+  it('round-trips recipe selection and advanced mode', () => {
+    expect(parseInsightQuery({
+      recipe: 'google-trends-daily',
+      advanced: '1',
+    })).toEqual({
+      recipeId: 'google-trends-daily',
+      advancedMode: true,
+    });
+
+    expect(buildInsightQuery({
+      recipeId: 'google-trends-daily',
+      advancedMode: false,
+    })).toEqual({
+      recipe: 'google-trends-daily',
+    });
+  });
+});

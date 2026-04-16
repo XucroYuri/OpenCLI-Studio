@@ -1,85 +1,105 @@
-# OpenCLI
+# OpenCLI Studio
 
-> **把网站、浏览器会话、Electron 应用和本地工具，统一变成适合人类与 AI Agent 使用的确定性接口。**  
-> 复用浏览器登录态，先自动化真实操作，再把高频流程沉淀成可复用的 CLI 命令。
+> 基于 [jackwener/OpenCLI](https://github.com/jackwener/OpenCLI) 持续演进的 Studio 化 Fork：保留上游自动化命令引擎，再在此基础上补强更易用的可视化工作台与产品体验。
 
 [![English](https://img.shields.io/badge/docs-English-1D4ED8?style=flat-square)](./README.md)
-[![npm](https://img.shields.io/npm/v/@jackwener/opencli?style=flat-square)](https://www.npmjs.com/package/@jackwener/opencli)
-[![Node.js Version](https://img.shields.io/node/v/@jackwener/opencli?style=flat-square)](https://nodejs.org)
+[![上游仓库](https://img.shields.io/badge/upstream-jackwener%2FOpenCLI-111827?style=flat-square)](https://github.com/jackwener/OpenCLI)
+[![当前仓库](https://img.shields.io/badge/repo-XucroYuri%2FOpenCLI--Studio-2563EB?style=flat-square)](https://github.com/XucroYuri/OpenCLI-Studio)
 [![License](https://img.shields.io/npm/l/@jackwener/opencli?style=flat-square)](./LICENSE)
 
-OpenCLI 可以用同一套 CLI 做三类事情：
+## 这个仓库是什么
 
-- **直接使用现成适配器**：B站、知乎、小红书、Twitter/X、Reddit、HackerNews 等 [87+ 站点](#内置命令) 开箱即用。
-- **直接驱动浏览器**：用 `opencli browser` 让 AI Agent 实时点击、输入、提取、截图、检查页面状态。
-- **把新网站生成成 CLI**：通过 `explore`、`synthesize`、`generate`、`cascade` 从真实页面行为推导出新的适配器。
+OpenCLI Studio 是 OpenCLI 的一个长期维护 Fork。
 
-除了网站能力，OpenCLI 还是一个 **CLI 枢纽**：你可以把 `gh`、`docker` 等本地工具统一注册到 `opencli` 下，也可以通过桌面端适配器控制 Cursor、Codex、Antigravity、ChatGPT、Notion 等 Electron 应用。
+- **上游仓库**：[jackwener/OpenCLI](https://github.com/jackwener/OpenCLI)
+- **当前仓库**：[XucroYuri/OpenCLI-Studio](https://github.com/XucroYuri/OpenCLI-Studio)
+- **Fork 目标**：持续继承上游 CLI、适配器与浏览器桥接能力，同时把 Studio 做成更适合高频使用的图形化自动化命令工作区
 
-## 亮点
+它不是一套和 OpenCLI 完全割裂的新运行时，而是“保留 OpenCLI 自动化内核 + 强化 Studio 产品层”的延伸版本。
 
-- **桌面应用控制** — 通过 CDP 直接在终端驱动 Electron 应用（Cursor、Codex、ChatGPT、Notion 等）。
-- **浏览器自动化** — `browser` 让 AI Agent 直接控制浏览器：点击、输入、提取、截图，完全可编程。
-- **网站 → CLI** — 把任何网站变成确定性 CLI：87+ 内置适配器，或用 `opencli generate` 生成新的。
-- **账号安全** — 复用 Chrome/Chromium 登录态，凭证永远不会离开浏览器。
-- **面向 AI Agent** — `explore` 发现 API，`synthesize` 生成适配器，`cascade` 探测认证策略，`browser` 直接控制浏览器。
-- **CLI 枢纽** — 统一发现、自动安装、纯透传任何外部 CLI（gh、docker、obsidian 等）。
-- **零 LLM 成本** — 运行时不消耗模型 token，跑 10,000 次也不花一分钱。
-- **确定性输出** — 相同命令，相同输出结构，每次一致。可管道、可脚本、CI 友好。
+## 从上游继承了什么
+
+这个 Fork 继续继承 OpenCLI 最核心的能力：
+
+- `opencli` CLI 入口和命令执行模型
+- 网站适配器、桌面应用适配器和本地 CLI Hub 机制
+- Browser Bridge、daemon、浏览器登录态复用模型
+- `explore`、`synthesize`、`generate`、`cascade` 等适配器生成工作流
+- 大部分上游命令元数据、文档结构和 release 资产
+
+## 这个 Fork 重点增加了什么
+
+OpenCLI Studio 更偏产品化和高频操作体验，尤其适合内容创作者与需要反复执行自动化命令的用户：
+
+- Studio Web 界面：`总览 / 命令库 / 工作台 / 模板 / 检查 / 关于`
+- 中英双语 i18n，并支持按浏览器语言自动适配
+- 面向影视动画公司内容创作者的站点与自动化命令排序
+- 基于分类目录的命令库浏览，而不是只按字母或数量查找
+- 更清晰的登录态、依赖、前置条件引导
+- 工作台结果区的信息优先展示，适合表格的结果默认优先表格
+- 更紧凑、专业、适合高频使用的页面布局
+
+## 兼容性说明
+
+为了尽可能保持与上游兼容：
+
+- npm 包名仍然是 `@jackwener/opencli`
+- CLI 命令仍然是 `opencli`
+- 大多数上游命令和使用方式仍然适用
+
+所以更准确的理解方式是：
+
+**它不是新的自动化引擎，而是 OpenCLI 的 Studio 化增强版。**
 
 ## 快速开始
 
-### 1. 安装 OpenCLI
+### 启动 Studio 开发环境
+
+```bash
+npm install
+npm run studio:dev:all
+```
+
+默认入口：
+
+- [http://127.0.0.1:4173/overview](http://127.0.0.1:4173/overview)
+- [http://127.0.0.1:4173/registry](http://127.0.0.1:4173/registry)
+
+### 直接运行 CLI
+
+```bash
+npm run build
+node dist/src/main.js list
+node dist/src/main.js bilibili hot --limit 5
+```
+
+如果你希望全局安装：
 
 ```bash
 npm install -g @jackwener/opencli
-```
-
-### 2. 安装 Browser Bridge 扩展
-
-OpenCLI 通过轻量 Browser Bridge 扩展和本地微型 daemon 与 Chrome/Chromium 通信。daemon 会按需自动启动。
-
-1. 到 GitHub [Releases 页面](https://github.com/jackwener/opencli/releases) 下载最新的 `opencli-extension-v{version}.zip`。
-2. 解压后打开 `chrome://extensions`，启用 **开发者模式**。
-3. 点击 **加载已解压的扩展程序**，选择解压后的目录。
-
-### 3. 验证环境
-
-```bash
-opencli doctor
-```
-
-### 4. 跑第一个命令
-
-```bash
 opencli list
-opencli hackernews top --limit 5
-opencli bilibili hot --limit 5
 ```
 
-## 给人类用户
+## Releases 与扩展下载
 
-如果你只是想稳定地调用网站或桌面应用能力，主路径很简单：
+当前 Fork 已维护自己的 release 页面，Studio 用户可以直接从这里获取扩展包与构建产物：
 
-- `opencli list` 查看当前所有命令
-- `opencli <site> <command>` 调用内置或生成好的适配器
-- `opencli register mycli` 把本地 CLI 接入同一发现入口
-- `opencli doctor` 处理浏览器连通性问题
+- [OpenCLI-Studio Releases](https://github.com/XucroYuri/OpenCLI-Studio/releases)
 
-## 给 AI Agent
+本仓库里的 Browser Bridge 下载提示，也已经改为默认指向当前 Fork 的 release 页面，而不是上游 release 页面。
 
-按任务类型，AI Agent 有两个不同入口：
+## 与上游的同步策略
 
-- [`skills/opencli-explorer/SKILL.md`](./skills/opencli-explorer/SKILL.md)：适配器创建入口，支持全自动生成（`opencli generate <url>`）和手动探索两种流程。
-- [`skills/opencli-browser/SKILL.md`](./skills/opencli-browser/SKILL.md)：底层控制入口，适合实时操作页面、debug 和人工介入。
+这个仓库的迭代方式是：
 
-安装全部 OpenCLI skills：
+1. 定期从 `jackwener/OpenCLI` 同步 `main`
+2. 当上游命令面、桥接能力或元数据发生变化时，在 Studio 一侧完成适配
+3. 尽量把 Studio 特有的交互、排序、本地化和中间层兼容逻辑隔离在 Fork 内
+4. 对于低侵入、可复用的部分，再考虑回流到上游仓库
 
-```bash
-npx skills add jackwener/opencli
-```
+## 代码入口
 
-或只装需要的 skill：
+如果你只想补齐上游 skill 工作流，也可以按需安装：
 
 ```bash
 npx skills add jackwener/opencli --skill opencli-usage
@@ -93,9 +113,10 @@ npx skills add jackwener/opencli --skill opencli-oneshot
 - 需要把某个站点收成可复用命令时，优先走 `opencli-explorer`（涵盖自动和手动两种路径）
 - 需要直接检查页面、操作页面时，再走 `opencli-browser`
 
-`browser` 可用命令包括：`open`、`state`、`click`、`type`、`select`、`keys`、`wait`、`get`、`screenshot`、`scroll`、`back`、`eval`、`network`、`init`、`verify`、`close`。
-
-## 核心概念
+- Studio 前端：[`studio/`](./studio)
+- Studio 后端与聚合层：[`src/studio/`](./src/studio)
+- 命令适配器文档索引：[`docs/adapters/index.md`](./docs/adapters/index.md)
+- 上游项目主页：[jackwener/OpenCLI](https://github.com/jackwener/OpenCLI)
 
 ### `browser`：实时操作
 

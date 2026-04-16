@@ -1,87 +1,103 @@
-# OpenCLI
+# OpenCLI Studio
 
-> **Turn websites, browser sessions, Electron apps, and local tools into deterministic interfaces for humans and AI agents.**
-> Reuse your logged-in browser, automate live workflows, and crystallize repeated actions into reusable CLI commands.
+> A Studio-first fork of [jackwener/OpenCLI](https://github.com/jackwener/OpenCLI): keep the upstream automation engine, then add a clearer web workspace for browsing, selecting, running, and reviewing automation commands.
 
-[![中文文档](https://img.shields.io/badge/docs-%E4%B8%AD%E6%96%87-0F766E?style=flat-square)](./README.zh-CN.md)
-[![npm](https://img.shields.io/npm/v/@jackwener/opencli?style=flat-square)](https://www.npmjs.com/package/@jackwener/opencli)
-[![Node.js Version](https://img.shields.io/node/v/@jackwener/opencli?style=flat-square)](https://nodejs.org)
+[![中文说明](https://img.shields.io/badge/docs-%E4%B8%AD%E6%96%87-0F766E?style=flat-square)](./README.zh-CN.md)
+[![Fork Source](https://img.shields.io/badge/upstream-jackwener%2FOpenCLI-111827?style=flat-square)](https://github.com/jackwener/OpenCLI)
+[![Studio Repo](https://img.shields.io/badge/repo-XucroYuri%2FOpenCLI--Studio-2563EB?style=flat-square)](https://github.com/XucroYuri/OpenCLI-Studio)
 [![License](https://img.shields.io/npm/l/@jackwener/opencli?style=flat-square)](./LICENSE)
 
-OpenCLI gives you one surface for three different kinds of automation:
+## What This Repository Is
 
-- **Use built-in adapters** for sites like Bilibili, Zhihu, Xiaohongshu, Reddit, HackerNews, Twitter/X, and [many more](#built-in-commands).
-- **Drive a live browser directly** with `opencli browser` when an AI agent needs to click, type, extract, or inspect a page in real time.
-- **Generate new adapters** from real browser behavior with `explore`, `synthesize`, `generate`, and `cascade`.
+OpenCLI Studio is maintained as a fork of the upstream OpenCLI project.
 
-It also works as a **CLI hub** for local tools such as `gh`, `docker`, and other binaries you register yourself, plus **desktop app adapters** for Electron apps like Cursor, Codex, Antigravity, ChatGPT, and Notion.
+- **Upstream repository**: [jackwener/OpenCLI](https://github.com/jackwener/OpenCLI)
+- **Current repository**: [XucroYuri/OpenCLI-Studio](https://github.com/XucroYuri/OpenCLI-Studio)
+- **Goal of this fork**: keep tracking upstream CLI capabilities while evolving a stronger Studio experience for command discovery, workbench execution, readiness guidance, i18n, and creator-oriented workflows
 
-## Highlights
+This repository is not a separate runtime from OpenCLI. It keeps the same CLI core and adapter system, then layers Studio-specific UX and orchestration on top.
 
-- **Desktop App Control** — Drive Electron apps (Cursor, Codex, ChatGPT, Notion, etc.) directly from the terminal via CDP.
-- **Browser Automation** — `browser` gives AI agents direct browser control: click, type, extract, screenshot — fully scriptable.
-- **Website → CLI** — Turn any website into a deterministic CLI: 87+ pre-built adapters, or generate your own with `opencli generate`.
-- **Account-safe** — Reuses Chrome/Chromium logged-in state; your credentials never leave the browser.
-- **AI Agent ready** — `explore` discovers APIs, `synthesize` generates adapters, `cascade` finds auth strategies, `browser` controls the browser directly.
-- **CLI Hub** — Discover, auto-install, and passthrough commands to any external CLI (gh, docker, obsidian, etc).
-- **Zero LLM cost** — No tokens consumed at runtime. Run 10,000 times and pay nothing.
-- **Deterministic** — Same command, same output schema, every time. Pipeable, scriptable, CI-friendly.
+## What Is Inherited From Upstream
 
----
+The fork keeps inheriting the parts that make OpenCLI valuable as an automation runtime:
+
+- the `opencli` CLI entrypoint and core command execution model
+- built-in site adapters and desktop app adapters
+- browser bridge, daemon, and login-session reuse model
+- adapter generation workflows such as `explore`, `synthesize`, `generate`, and `cascade`
+- most upstream command metadata, docs structure, and release assets
+
+## What This Fork Adds
+
+OpenCLI Studio focuses on usability, especially for high-frequency users and content creators:
+
+- a Studio web interface for `Overview`, `Registry`, `Workbench`, `Templates`, `Checks`, and `About`
+- tighter Chinese and English i18n, with browser-language auto detection
+- creator-oriented ranking for sites and automation commands
+- category-driven registry browsing instead of plain alphabetical discovery
+- clearer readiness prompts for login state, dependencies, and setup steps
+- information-first result rendering in the workbench, with table-first output when charts are not helpful
+- a more compact, product-oriented layout tuned for repeated use
+
+## Compatibility Notes
+
+To stay compatible with upstream:
+
+- the package name is still `@jackwener/opencli`
+- the CLI command is still `opencli`
+- most upstream docs and commands remain applicable
+
+That means this fork is best understood as **OpenCLI + Studio-focused product layer**, not as a brand new automation engine.
 
 ## Quick Start
 
-### 1. Install OpenCLI
+### Run the Studio development stack
+
+```bash
+npm install
+npm run studio:dev:all
+```
+
+Default entry:
+
+- [http://127.0.0.1:4173/overview](http://127.0.0.1:4173/overview)
+- [http://127.0.0.1:4173/registry](http://127.0.0.1:4173/registry)
+
+### Run the CLI directly
+
+```bash
+npm run build
+node dist/src/main.js list
+node dist/src/main.js bilibili hot --limit 5
+```
+
+Or install the package globally:
 
 ```bash
 npm install -g @jackwener/opencli
-```
-
-### 2. Install the Browser Bridge Extension
-
-OpenCLI connects to Chrome/Chromium through a lightweight Browser Bridge extension plus a small local daemon. The daemon auto-starts when needed.
-
-1. Download the latest `opencli-extension-v{version}.zip` from the GitHub [Releases page](https://github.com/jackwener/opencli/releases).
-2. Unzip it, open `chrome://extensions`, and enable **Developer mode**.
-3. Click **Load unpacked** and select the unzipped folder.
-
-### 3. Verify the setup
-
-```bash
-opencli doctor
-```
-
-### 4. Run your first commands
-
-```bash
 opencli list
-opencli hackernews top --limit 5
-opencli bilibili hot --limit 5
 ```
 
-## For Humans
+## Releases And Extension Downloads
 
-Use OpenCLI directly when you want a reliable command instead of a live browser session:
+This fork keeps its own release page so Studio users can download extension assets from the fork directly:
 
-- `opencli list` shows every registered command.
-- `opencli <site> <command>` runs a built-in or generated adapter.
-- `opencli register mycli` exposes a local CLI through the same discovery surface.
-- `opencli doctor` helps diagnose browser connectivity.
+- [OpenCLI-Studio Releases](https://github.com/XucroYuri/OpenCLI-Studio/releases)
 
-## For AI Agents
+The Browser Bridge download prompts in this repository now point to the fork release page instead of the upstream release page.
 
-Use two different entry points depending on the task:
+## Repository Relationship And Sync Strategy
 
-- [`skills/opencli-explorer/SKILL.md`](./skills/opencli-explorer/SKILL.md): the entry point for creating new adapters — supports both fully automated generation (`opencli generate <url>`) and manual exploration workflows.
-- [`skills/opencli-browser/SKILL.md`](./skills/opencli-browser/SKILL.md): the low-level control surface for live browsing, debugging, and manual intervention.
+The working model for this repository is:
 
-Install the packaged skills with:
+1. Sync upstream `main` regularly from `jackwener/OpenCLI`
+2. Rebase or adapt the Studio module when upstream automation surfaces change
+3. Keep fork-specific UX, localization, ranking, and orchestration logic isolated where possible
+4. Contribute reusable or low-intrusion parts back upstream when they can land cleanly
 
-```bash
-npx skills add jackwener/opencli
-```
+## Where To Look Next
 
-Or install only what you need:
+If you want a lighter upstream skill setup for agent workflows:
 
 ```bash
 npx skills add jackwener/opencli --skill opencli-usage
@@ -95,9 +111,10 @@ In practice:
 - start with `opencli-explorer` when the agent needs a reusable command for a site (it covers both automated and manual flows)
 - use `opencli-browser` when the agent needs to inspect or steer the page directly
 
-Available browser commands include `open`, `state`, `click`, `type`, `select`, `keys`, `wait`, `get`, `screenshot`, `scroll`, `back`, `eval`, `network`, `init`, `verify`, and `close`.
-
-## Core Concepts
+- Studio frontend: [`studio/`](./studio)
+- Studio backend glue: [`src/studio/`](./src/studio)
+- Adapter docs index: [`docs/adapters/index.md`](./docs/adapters/index.md)
+- Upstream project docs: [jackwener/OpenCLI](https://github.com/jackwener/OpenCLI)
 
 ### `browser`: live control
 

@@ -5,7 +5,7 @@
  */
 
 import { styleText } from 'node:util';
-import { DEFAULT_DAEMON_PORT } from './constants.js';
+import { BROWSER_BRIDGE_RELEASES_URL, DEFAULT_DAEMON_PORT } from './constants.js';
 import { BrowserBridge } from './browser/index.js';
 import { getDaemonHealth, listSessions } from './browser/daemon-client.js';
 import { getErrorMessage } from './errors.js';
@@ -149,7 +149,7 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
         'Daemon is running but the Chrome/Chromium extension is not connected.\n' +
         'If the extension is already installed, try: opencli daemon stop && opencli doctor\n' +
         'If the extension is not installed:\n' +
-        '  1. Download from https://github.com/jackwener/opencli/releases\n' +
+        `  1. Download from ${BROWSER_BRIDGE_RELEASES_URL}\n` +
         '  2. Open chrome://extensions/ → Enable Developer Mode\n' +
         '  3. Click "Load unpacked" → select the extension folder',
       );
@@ -159,7 +159,7 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
     issues.push(
       'Extension is connected but did not report a version.\n' +
       '  This usually means an outdated Browser Bridge extension.\n' +
-      '  Reload or reinstall the extension from: https://github.com/jackwener/opencli/releases',
+      `  Reload or reinstall the extension from: ${BROWSER_BRIDGE_RELEASES_URL}`,
     );
   }
   if (connectivity && !connectivity.ok) {
@@ -171,7 +171,7 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
       issues.push(
         `CLI version incompatible with extension: extension v${extensionVersion} requires CLI ${extensionCompatRange}, but CLI is v${opts.cliVersion}\n` +
         '  Update the CLI: npm install -g @jackwener/opencli\n' +
-        '  Or download a compatible extension from: https://github.com/jackwener/opencli/releases',
+        `  Or download a compatible extension from: ${BROWSER_BRIDGE_RELEASES_URL}`,
       );
     }
   } else if (extensionVersion && opts.cliVersion) {
@@ -181,7 +181,7 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
     if (extMajor !== cliMajor) {
       issues.push(
         `Extension major version mismatch: extension v${extensionVersion} ≠ CLI v${opts.cliVersion}\n` +
-        '  Download the latest extension from: https://github.com/jackwener/opencli/releases',
+        `  Download the latest extension from: ${BROWSER_BRIDGE_RELEASES_URL}`,
       );
     }
   }
@@ -191,7 +191,7 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
   if (extensionVersion && latestExtensionVersion && isNewerVersion(latestExtensionVersion, extensionVersion)) {
     issues.push(
       `Extension update available: v${extensionVersion} → v${latestExtensionVersion}\n` +
-      '  Download from: https://github.com/jackwener/opencli/releases',
+      `  Download from: ${BROWSER_BRIDGE_RELEASES_URL}`,
     );
   }
 

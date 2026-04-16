@@ -10,7 +10,7 @@ import type { IPage } from '../types.js';
 import type { IBrowserFactory } from '../runtime.js';
 import { Page } from './page.js';
 import { getDaemonHealth, requestDaemonShutdown } from './daemon-client.js';
-import { DEFAULT_DAEMON_PORT } from '../constants.js';
+import { BROWSER_BRIDGE_RELEASES_URL, DEFAULT_DAEMON_PORT } from '../constants.js';
 import { BrowserConnectError } from '../errors.js';
 import { PKG_VERSION } from '../version.js';
 
@@ -106,7 +106,7 @@ export class BrowserBridge implements IBrowserFactory {
           'Make sure Chrome/Chromium is open and the extension is enabled.\n' +
           'If the extension is installed, try: opencli daemon stop && opencli doctor\n' +
           'If not installed:\n' +
-          '  1. Download: https://github.com/jackwener/opencli/releases\n' +
+          `  1. Download: ${BROWSER_BRIDGE_RELEASES_URL}\n` +
           '  2. Open chrome://extensions → Developer Mode → Load unpacked',
           'extension-not-connected',
         );
@@ -146,7 +146,7 @@ export class BrowserBridge implements IBrowserFactory {
         'Make sure Chrome/Chromium is open and the extension is enabled.\n' +
         'If the extension is installed, try: opencli daemon stop && opencli doctor\n' +
         'If not installed:\n' +
-        '  1. Download: https://github.com/jackwener/opencli/releases\n' +
+        `  1. Download: ${BROWSER_BRIDGE_RELEASES_URL}\n` +
         '  2. Open chrome://extensions → Developer Mode → Load unpacked',
         'extension-not-connected',
       );
