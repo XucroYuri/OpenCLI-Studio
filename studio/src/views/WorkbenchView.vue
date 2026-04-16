@@ -668,6 +668,14 @@ async function handleReadinessAction(action: CommandReadinessAction): Promise<vo
     }
 
     if (action.type === 'open-command' && action.command) {
+      if (action.args && Object.keys(action.args).length > 0) {
+        if (selectedCommandName.value === action.command) {
+          applyArgsToForm(action.args);
+          pendingFormArgs.value = null;
+        } else {
+          queueArgs(action.args);
+        }
+      }
       selectCommand(action.command);
       const nextCommand = findCommand(action.command);
       if (nextCommand) {

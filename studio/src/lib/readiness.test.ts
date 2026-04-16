@@ -45,7 +45,7 @@ describe('buildCommandReadiness', () => {
     });
   });
 
-  it('adds auth and doctor actions for browser-backed commands that still need setup', () => {
+  it('keeps confirm-risk setup commands behind open-command actions', () => {
     const browserCommand = makeCommand({
       command: 'spotify/status',
       site: 'spotify',
@@ -84,6 +84,95 @@ describe('buildCommandReadiness', () => {
         mode: 'browser',
         capability: 'action',
         risk: 'confirm',
+        market: 'international',
+        siteCategory: 'media',
+        uiHints: {
+          supportsLists: false,
+          supportsDetails: false,
+          supportsCharts: false,
+          supportsTimeSeries: false,
+        },
+      },
+    });
+
+    expect(buildCommandReadiness({
+      command: browserCommand,
+      doctor: null,
+      plugins: [],
+      externalClis: [],
+      registryCommands: [browserCommand, loginCommand],
+    })).toEqual({
+      tone: 'warning',
+      title: 'System check not run yet',
+      bullets: [
+        'This command depends on the browser connection, extension, and a signed-in site session.',
+        'Run the system check once before you start.',
+        'You can run "Spotify auth" first to finish authorization.',
+      ],
+      actions: [
+        {
+          id: 'run-doctor',
+          kind: 'primary',
+          type: 'run-doctor',
+          label: 'Run system check',
+        },
+        {
+          id: 'open-ops',
+          kind: 'secondary',
+          type: 'open-ops',
+          label: 'Open Checks',
+        },
+        {
+          id: 'auth:spotify/auth',
+          kind: 'primary',
+          type: 'open-command',
+          label: 'Open authorization',
+          command: 'spotify/auth',
+          args: { provider: 'qr' },
+        },
+      ],
+    });
+  });
+
+  it('auto-runs safe setup commands when defaults fully resolve the args', () => {
+    const browserCommand = makeCommand({
+      command: 'spotify/status',
+      site: 'spotify',
+      name: 'status',
+      browser: true,
+      strategy: 'cookie',
+      meta: {
+        surface: 'builtin',
+        mode: 'browser',
+        capability: 'account',
+        risk: 'safe',
+        market: 'international',
+        siteCategory: 'media',
+        uiHints: {
+          supportsLists: true,
+          supportsDetails: false,
+          supportsCharts: false,
+          supportsTimeSeries: false,
+        },
+      },
+    });
+    const loginCommand = makeCommand({
+      command: 'spotify/auth',
+      site: 'spotify',
+      name: 'auth',
+      description: 'Spotify auth',
+      args: [{
+        name: 'provider',
+        required: true,
+        choices: ['qr'],
+      }],
+      browser: true,
+      strategy: 'cookie',
+      meta: {
+        surface: 'builtin',
+        mode: 'browser',
+        capability: 'action',
+        risk: 'safe',
         market: 'international',
         siteCategory: 'media',
         uiHints: {

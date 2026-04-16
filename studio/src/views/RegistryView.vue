@@ -16,7 +16,7 @@ import {
 } from 'naive-ui';
 import PresetShelf from '../components/PresetShelf.vue';
 import SavePresetButton from '../components/SavePresetButton.vue';
-import { installExternalCli as requestInstallExternalCli } from '../lib/api';
+import { executeCommand, installExternalCli as requestInstallExternalCli } from '../lib/api';
 import { useStudioI18n } from '../lib/i18n';
 import { buildRegistryPresetState, readRegistryPresetState } from '../lib/preset-state';
 import {
@@ -452,8 +452,9 @@ function clearAllFilters(): void {
   clearCategoryFilters();
 }
 
-function openWorkbench(command: string): void {
+function openWorkbench(command: string, args: Record<string, unknown> = {}): void {
   store.setSelectedCommand(command);
+  store.stageWorkbenchArgs(args);
   void router.push({
     name: 'workbench',
     query: {
@@ -559,9 +560,18 @@ async function handleAvailabilityAction(action: CommandReadinessAction, siteName
       return;
     }
 
-    if ((action.type === 'open-command' || action.type === 'run-command') && action.command) {
-      openWorkbench(action.command);
+    if (action.type === 'open-command' && action.command) {
+      openWorkbench(action.command, action.args ?? {});
       await store.ensureSiteAccess([siteName], true);
+      return;
+    }
+
+    if (action.type === 'run-command' && action.command) {
+      await executeCommand(action.command, action.args ?? {});
+      await store.refreshHistory();
+      const nextCommand = store.registry.commands.find((entry) => entry.command === action.command);
+      await store.ensureSiteAccess([siteName, nextCommand?.site || ''].filter(Boolean), true);
+      message.success(t('readiness.actionCompleted'));
       return;
     }
 

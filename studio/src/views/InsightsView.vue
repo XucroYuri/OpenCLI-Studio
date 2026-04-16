@@ -679,7 +679,7 @@ async function handleReadinessAction(action: CommandReadinessAction): Promise<vo
 
     if (action.type === 'open-command' && action.command) {
       store.setSelectedCommand(action.command);
-      store.stageWorkbenchArgs({});
+      store.stageWorkbenchArgs(action.args ?? {});
       void router.push({
         name: 'workbench',
         query: buildWorkbenchQuery({

@@ -179,8 +179,9 @@ function openOpsRegistry(site?: string, surface?: 'plugin' | 'external' | 'built
   });
 }
 
-function openWorkbench(command: string): void {
+function openWorkbench(command: string, args: Record<string, unknown> = {}): void {
   store.setSelectedCommand(command);
+  store.stageWorkbenchArgs(args);
   void router.push({
     name: 'workbench',
     query: {
@@ -242,7 +243,7 @@ async function handleReadinessAction(action: CommandReadinessAction, site?: stri
     }
 
     if (action.type === 'open-command' && action.command) {
-      openWorkbench(action.command);
+      openWorkbench(action.command, action.args ?? {});
       return;
     }
 

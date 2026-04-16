@@ -180,6 +180,10 @@ function buildAutomaticArgs(args: StudioCommandArg[]): Record<string, unknown> {
   return resolved;
 }
 
+function canAutoRunSetupCommand(command: StudioCommandItem): boolean {
+  return command.meta.risk === 'safe' && !needsManualInput(command.args);
+}
+
 function findSiteCommand(
   commands: StudioCommandItem[],
   site: string,
@@ -220,9 +224,9 @@ function buildSiteSetupAction(
   },
 ): CommandReadinessAction {
   const { setup, t } = input;
-  const runnable = !needsManualInput(setup.command.args);
-  const runnableArgs = runnable ? buildAutomaticArgs(setup.command.args) : undefined;
-  const actionArgs = runnableArgs && Object.keys(runnableArgs).length > 0 ? runnableArgs : undefined;
+  const runnable = canAutoRunSetupCommand(setup.command);
+  const inferredArgs = buildAutomaticArgs(setup.command.args);
+  const actionArgs = Object.keys(inferredArgs).length > 0 ? inferredArgs : undefined;
 
   if (setup.actionKind === 'auth') {
     return {
