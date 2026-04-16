@@ -12,11 +12,12 @@ export type TranslateFn = (key: string, params?: Record<string, string | number 
 export interface CommandReadinessAction {
   id: string;
   kind: 'primary' | 'secondary';
-  type: 'run-doctor' | 'open-ops' | 'run-command' | 'open-command' | 'install-external' | 'open-url';
+  type: 'run-doctor' | 'open-ops' | 'run-command' | 'open-command' | 'install-external' | 'copy-text' | 'open-url';
   label: string;
   command?: string;
   args?: Record<string, unknown>;
   externalName?: string;
+  text?: string;
   url?: string;
 }
 
@@ -706,6 +707,16 @@ export function buildCommandReadiness(input: {
           'Auto-install is not available for this dependency. Open the homepage for setup steps.',
         ),
       );
+    }
+
+    if (relatedExternalCli.installCommand) {
+      pushAction(actions, {
+        id: `copy-install:${relatedExternalCli.name}`,
+        kind: 'secondary',
+        type: 'copy-text',
+        label: localizeText(t, 'ops.copyInstall', 'Copy install command'),
+        text: relatedExternalCli.installCommand,
+      });
     }
 
     if (relatedExternalCli.homepage) {

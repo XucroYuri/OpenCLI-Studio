@@ -342,6 +342,13 @@ describe('buildCommandReadiness', () => {
           externalName: 'gh',
         },
         {
+          id: 'copy-install:gh',
+          kind: 'secondary',
+          type: 'copy-text',
+          label: 'Copy install command',
+          text: 'brew install gh',
+        },
+        {
           id: 'homepage:gh',
           kind: 'secondary',
           type: 'open-url',
@@ -414,6 +421,13 @@ describe('buildCommandReadiness', () => {
           type: 'install-external',
           label: 'Install dependency',
           externalName: 'yt-dlp',
+        },
+        {
+          id: 'copy-install:yt-dlp',
+          kind: 'secondary',
+          type: 'copy-text',
+          label: 'Copy install command',
+          text: 'brew install yt-dlp',
         },
         {
           id: 'homepage:yt-dlp',

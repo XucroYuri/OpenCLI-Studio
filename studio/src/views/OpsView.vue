@@ -263,6 +263,11 @@ async function handleReadinessAction(action: CommandReadinessAction, site?: stri
       return;
     }
 
+    if (action.type === 'copy-text' && action.text) {
+      await copyInstallCommand(action.text);
+      return;
+    }
+
     if (action.type === 'open-url' && action.url) {
       window.open(action.url, '_blank', 'noopener,noreferrer');
     }

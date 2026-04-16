@@ -712,6 +712,12 @@ async function handleReadinessAction(action: CommandReadinessAction): Promise<vo
       return;
     }
 
+    if (action.type === 'copy-text' && action.text) {
+      await navigator.clipboard.writeText(action.text);
+      message.success(t('ops.installCopied'));
+      return;
+    }
+
     if (action.type === 'open-url' && action.url) {
       window.open(action.url, '_blank', 'noopener,noreferrer');
     }
