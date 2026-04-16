@@ -19,10 +19,10 @@ import { PKG_VERSION } from './version.js';
 import { printCompletionScript } from './completion.js';
 import { loadExternalClis, executeExternalCli, installExternalCli, registerExternalCli, isBinaryInstalled } from './external.js';
 import { registerAllCommands } from './commanderAdapter.js';
-import { EXIT_CODES, getErrorMessage } from './errors.js';
+import { EXIT_CODES, getErrorMessage, BrowserConnectError } from './errors.js';
 import { TargetError } from './browser/target-errors.js';
 import { resolveTargetJs, getTextResolvedJs, getValueResolvedJs, getAttributesResolvedJs, selectResolvedJs, isAutocompleteResolvedJs } from './browser/target-resolver.js';
-import { daemonStop } from './commands/daemon.js';
+import { daemonStatus, daemonStop } from './commands/daemon.js';
 import { log } from './logger.js';
 
 const CLI_FILE = fileURLToPath(import.meta.url);
@@ -311,11 +311,9 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
         const page = await getBrowserPage();
         await fn(page, ...args);
       } catch (err) {
-        const msg = getErrorMessage(err);
-        if (msg.includes('Extension not connected') || msg.includes('Daemon')) {
-          log.error(`Browser not connected. Run 'opencli doctor' to diagnose.`);
-        } else if (msg.includes('attach failed') || msg.includes('chrome-extension://')) {
-          log.error(`Browser attach failed — another extension may be interfering. Try disabling 1Password.`);
+        if (err instanceof BrowserConnectError) {
+          log.error(err.message);
+          if (err.hint) log.error(`Hint: ${err.hint}`);
         } else if (err instanceof TargetError) {
           log.error(`[${err.code}] ${err.message}`);
           if (err.hint) log.error(`Hint: ${err.hint}`);
@@ -324,7 +322,12 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
             err.candidates.forEach((c, i) => log.error(`  ${i + 1}. ${c}`));
           }
         } else {
-          log.error(msg);
+          const msg = getErrorMessage(err);
+          if (msg.includes('attach failed') || msg.includes('chrome-extension://')) {
+            log.error(`Browser attach failed — another extension may be interfering. Try disabling 1Password.`);
+          } else {
+            log.error(msg);
+          }
         }
         process.exitCode = EXIT_CODES.GENERIC_ERROR;
       }
@@ -339,7 +342,7 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
   browser.command('open').argument('<url>').description('Open URL in automation window')
     .action(browserAction(async (page, url) => {
       // Start session-level capture before navigation (catches initial requests)
-      const hasSessionCapture = await page.startNetworkCapture?.().then(() => true).catch(() => false);
+      const hasSessionCapture = await page.startNetworkCapture?.() ?? false;
       await page.goto(url);
       await page.wait(2);
       // Fallback: inject JS interceptor when session capture is unavailable
@@ -1081,6 +1084,10 @@ cli({
 
   // ── Built-in: daemon ──────────────────────────────────────────────────────
   const daemonCmd = program.command('daemon').description('Manage the opencli daemon');
+  daemonCmd
+    .command('status')
+    .description('Show daemon status')
+    .action(async () => { await daemonStatus(); });
   daemonCmd
     .command('stop')
     .description('Stop the daemon')

@@ -755,6 +755,29 @@ opencli xiaohongshu creator-stats              # 创作者数据统计
 opencli xiaoyuzhou podcast 12345          # 播客资料 (id positional)
 opencli xiaoyuzhou podcast-episodes 12345 # 播客剧集列表 (id positional)
 opencli xiaoyuzhou episode 12345          # 单集详情 (id positional)
+opencli xiaoyuzhou download 12345         # 下载单集音频 (id positional)
+opencli xiaoyuzhou transcript 12345       # 下载单集转录 JSON / 文本（需要本地凭证）
+```
+
+## Nowcoder (牛客网) ✅🌐
+
+```bash
+opencli nowcoder hot --limit 10                # 热搜榜（公开）
+opencli nowcoder trending --limit 10           # 热门帖子（公开）
+opencli nowcoder topics --limit 10             # 热门话题（公开）
+opencli nowcoder recommend --limit 15          # 推荐内容流（公开）
+opencli nowcoder creators --limit 10           # 创作者榜单（公开）
+opencli nowcoder companies --job 11002         # 热门面经公司（公开）
+opencli nowcoder jobs                          # 岗位分类（公开）
+opencli nowcoder search "java" --type post     # 全文搜索（需登录）
+opencli nowcoder suggest "java"                # 搜索联想（需登录）
+opencli nowcoder experience --limit 10         # 面经帖子（需登录）
+opencli nowcoder referral --limit 10           # 内推帖子（需登录）
+opencli nowcoder salary --limit 10             # 薪资爆料（需登录）
+opencli nowcoder papers --job 11002 --company 239  # 题库（需登录）
+opencli nowcoder practice --job 11226 --limit 10   # 练习题（需登录）
+opencli nowcoder notifications                 # 未读消息摘要（需登录）
+opencli nowcoder detail 2b6b64d4adb34ea3838e832ae4447ab1  # 帖子详情（需登录）
 ```
 
 ## Xueqiu (雪球) 🌐
@@ -797,10 +820,18 @@ opencli yollomi upscale <image-url>      # AI 超分辨率 (1 credit, 支持 --s
 ## YouTube 🌐
 
 ```bash
+opencli youtube feed --limit 10          # 首页推荐
+opencli youtube history --limit 20       # 观看历史
+opencli youtube watch-later --limit 50   # 稍后再看
+opencli youtube subscriptions --limit 30 # 订阅频道列表
 opencli youtube search "rust"            # 搜索视频 (query positional)
 opencli youtube video "https://www.youtube.com/watch?v=xxx"  # 视频元数据
 opencli youtube transcript "https://www.youtube.com/watch?v=xxx"  # 获取视频字幕/转录
 opencli youtube transcript "xxx" --lang zh-Hans --mode raw  # 指定语言 + 原始时间戳模式
+opencli youtube like "https://www.youtube.com/watch?v=xxx"  # 点赞视频
+opencli youtube unlike "xxx"             # 取消点赞
+opencli youtube subscribe "@OpenAI"      # 订阅频道
+opencli youtube unsubscribe "UCxxxxxxxxxxxxxx"  # 取消订阅
 ```
 
 ## Yuanbao (腾讯元宝) 🌐
