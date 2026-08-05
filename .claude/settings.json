@@ -59,11 +59,9 @@
     "deny": [
       "Bash(rm -rf:*)",
       "Bash(rm -r:*)",
-      "Bash(wget:*)",
       "Bash(> /dev:*)",
       "Bash(> /etc:*)",
       "Bash(sudo:*)",
-      "Bash(chmod:*)",
       "Bash(chown:*)"
     ],
     "defaultMode": "acceptEdits"
