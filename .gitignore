@@ -20,6 +20,9 @@ docs/.vitepress/cache
 .windsurf
 .claude/*
 !.claude/settings.json
+.omc/*
+!.omc/skills/
+!.omc/skills/*.md
 .cortex
 
 # Database files
