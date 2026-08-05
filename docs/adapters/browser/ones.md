@@ -52,6 +52,16 @@ opencli ones logout
 - [Browser Bridge extension](/guide/browser-bridge) installed
 - `ONES_BASE_URL` set to the same origin opened in Chrome
 
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ONES_BASE_URL` | Yes | ONES root URL (same as opened in Chrome) |
+| `ONES_USER_ID` / `ONES_AUTH_TOKEN` | Per deployment | If the API requires auth headers; can rely on browser login first |
+| `ONES_EMAIL` / `ONES_PHONE` / `ONES_PASSWORD` | No | Used by `ones login` for scripted auth |
+| `ONES_TEAM_UUID` | No | Omit `--team` in `tasks` / `my-tasks` / `task` |
+| `ONES_MANHOUR_SCALE` | No | Default `100000` for hours display/input |
+
 ## Notes
 
 - This adapter targets legacy ONES Project API deployments.
