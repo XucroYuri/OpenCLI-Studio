@@ -46,6 +46,7 @@
       "Bash(node:dist/src/main.js:*)",
       "Bash(curl:localhost:*)",
       "Bash(curl:127.0.0.1:*)",
+      "Bash(curl:*)",
       "Bash(sleep:*)",
       "Agent",
       "WebSearch",
