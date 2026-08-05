@@ -10,9 +10,10 @@ OpenCLI supports downloading images, videos, and articles from supported platfor
 | **bilibili** | Videos | Requires `yt-dlp` installed |
 | **twitter** | Images, Videos | Downloads from user media tab or single tweet |
 | **douban** | Images | Downloads poster / still image lists from movie subjects |
-| **xiaoyuzhou** | Audio, Transcript | Downloads episode audio from public pages and transcript JSON/text with local credentials |
+| **xiaoyuzhou** | Audio, Transcript | Downloads episode audio and transcript JSON/text with local credentials |
 | **zhihu** | Articles (Markdown) | Exports articles with optional image download |
 | **weixin** | Articles (Markdown) | Exports WeChat Official Account articles |
+| **midjourney** | Images, Raw/Social Video, GIF | Validates file signatures; requires a logged-in browser |
 
 ## Prerequisites
 
@@ -59,9 +60,13 @@ opencli zhihu download "https://zhuanlan.zhihu.com/p/xxx" --download-images
 
 # Export WeChat article to Markdown
 opencli weixin download --url "https://mp.weixin.qq.com/s/xxx" --output ./weixin
+
+# Download all four Midjourney image candidates or a social-ready video
+opencli midjourney download <image-job> --kind image --index all --output ./midjourney
+opencli midjourney download <video-job> --kind video-social --index 1 --output ./midjourney
 ```
 
-`opencli xiaoyuzhou transcript` requires local Xiaoyuzhou credentials in `~/.opencli/xiaoyuzhou.json`.
+`opencli xiaoyuzhou download` and `transcript` require local Xiaoyuzhou credentials in `~/.opencli/xiaoyuzhou.json`.
 
 ## Pipeline Step
 

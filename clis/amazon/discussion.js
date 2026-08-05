@@ -1,6 +1,6 @@
-import { CommandExecutionError } from '@jackwener/opencli/errors';
+import { AuthRequiredError, CommandExecutionError } from '@jackwener/opencli/errors';
 import { cli, Strategy } from '@jackwener/opencli/registry';
-import { buildDiscussionUrl, buildProvenance, cleanText, extractAsin, normalizeProductUrl, parseRatingValue, parseReviewCount, trimRatingPrefix, uniqueNonEmpty, assertUsableState, gotoAndReadState, } from './shared.js';
+import { DOMAIN, amazonHostFromInput, buildProductUrl, buildDiscussionUrl, buildProvenance, cleanText, extractAsin, normalizeProductUrl, parseRatingValue, parseReviewCount, trimRatingPrefix, uniqueNonEmpty, assertUsableState, gotoAndReadState, } from './shared.js';
 function normalizeDiscussionPayload(payload) {
     const sourceUrl = cleanText(payload.href) || buildDiscussionUrl(payload.href ?? '');
     const asin = extractAsin(payload.href ?? '') ?? null;
@@ -9,7 +9,7 @@ function normalizeDiscussionPayload(payload) {
     const provenance = buildProvenance(sourceUrl);
     return {
         asin,
-        product_url: asin ? normalizeProductUrl(asin) : null,
+        product_url: asin ? normalizeProductUrl(sourceUrl) : null,
         discussion_url: sourceUrl,
         ...provenance,
         average_rating_text: averageRatingText,
@@ -28,10 +28,16 @@ function normalizeDiscussionPayload(payload) {
         })),
     };
 }
-async function readDiscussionPayload(page, input, limit) {
-    const url = buildDiscussionUrl(input);
-    const state = await gotoAndReadState(page, url, 2500, 'discussion');
-    assertUsableState(state, 'discussion');
+function hasDiscussionSummary(payload) {
+    return Boolean(cleanText(payload.average_rating_text) || cleanText(payload.total_review_count_text));
+}
+function isSignInState(state) {
+    const href = cleanText(state.href).toLowerCase();
+    const title = cleanText(state.title).toLowerCase();
+    return href.includes('/ap/signin')
+        || title.includes('amazon sign-in');
+}
+async function readCurrentDiscussionPayload(page, limit) {
     return await page.evaluate(`
     (() => ({
       href: window.location.href,
@@ -53,9 +59,33 @@ async function readDiscussionPayload(page, input, limit) {
     }))()
   `);
 }
+async function readDiscussionPayload(page, input, limit) {
+    const reviewUrl = buildDiscussionUrl(input);
+    const reviewState = await gotoAndReadState(page, reviewUrl, 2500, 'discussion');
+    assertUsableState(reviewState, 'discussion');
+    const reviewPayload = await readCurrentDiscussionPayload(page, limit);
+    if (hasDiscussionSummary(reviewPayload)) {
+        return reviewPayload;
+    }
+    const productUrl = buildProductUrl(input);
+    const productState = await gotoAndReadState(page, productUrl, 2500, 'discussion');
+    assertUsableState(productState, 'discussion');
+    if (isSignInState(reviewState) && isSignInState(productState)) {
+        throw new AuthRequiredError(amazonHostFromInput(input) ?? DOMAIN, 'Amazon review discussion requires an active signed-in Amazon session in the shared Chrome profile.');
+    }
+    const productPayload = await readCurrentDiscussionPayload(page, limit);
+    if (hasDiscussionSummary(productPayload)) {
+        return productPayload;
+    }
+    if (isSignInState(reviewState)) {
+        throw new CommandExecutionError('amazon review page redirected to sign-in and product page fallback did not expose review summary', 'Open the product page in Chrome, verify reviews are visible, and retry.');
+    }
+    return reviewPayload;
+}
 cli({
     site: 'amazon',
     name: 'discussion',
+    access: 'read',
     description: 'Amazon review summary and sample customer discussion from product review pages',
     domain: 'amazon.com',
     strategy: Strategy.COOKIE,
@@ -81,11 +111,14 @@ cli({
         const payload = await readDiscussionPayload(page, input, limit);
         const normalized = normalizeDiscussionPayload(payload);
         if (!normalized.average_rating_text && !normalized.total_review_count_text) {
-            throw new CommandExecutionError('amazon discussion page did not expose review summary', 'The review page may have changed or hit a robot check. Open the review page in Chrome and retry.');
+            const landedUrl = cleanText(payload.href) || buildDiscussionUrl(input);
+            throw new CommandExecutionError(`amazon discussion page did not expose review summary (landed on ${landedUrl})`, 'The review page may have changed or hit a robot check. Open the review page in Chrome and retry.');
         }
         return [normalized];
     },
 });
 export const __test__ = {
     normalizeDiscussionPayload,
+    hasDiscussionSummary,
+    isSignInState,
 };

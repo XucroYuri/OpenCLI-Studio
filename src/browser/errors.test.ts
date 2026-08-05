@@ -8,7 +8,10 @@ describe('classifyBrowserError', () => {
       'Extension disconnected',
       'Extension not connected',
       'attach failed',
+      'Detached while handling command',
+      'Debugger is not attached to the tab: 123',
       'no longer exists',
+      'No tab with id: 456',
       'CDP connection reset',
       'Daemon command failed',
       'No window with id: 123',
@@ -29,6 +32,15 @@ describe('classifyBrowserError', () => {
 
   it('classifies CDP -32000 target errors with 200ms delay', () => {
     const advice = classifyBrowserError(new Error('{"code":-32000,"message":"Target closed"}'));
+    expect(advice.kind).toBe('target-navigation');
+    expect(advice.retryable).toBe(true);
+    expect(advice.delayMs).toBe(200);
+  });
+
+  it('classifies CDP -32000 execution-context errors with 200ms delay', () => {
+    const advice = classifyBrowserError(
+      new Error('{"code":-32000,"message":"Cannot find default execution context"}'),
+    );
     expect(advice.kind).toBe('target-navigation');
     expect(advice.retryable).toBe(true);
     expect(advice.delayMs).toBe(200);

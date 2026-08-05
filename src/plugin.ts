@@ -217,37 +217,11 @@ function moveDir(src: string, dest: string, fsOps: MoveDirFsOps = fs): void {
   }
 }
 
-type PromoteDirFsOps = MoveDirFsOps & Pick<typeof fs, 'existsSync' | 'mkdirSync'>;
+type ReplaceDirFsOps = MoveDirFsOps & Pick<typeof fs, 'existsSync' | 'mkdirSync'>;
 
 function createSiblingTempPath(dest: string, kind: 'tmp' | 'bak'): string {
   const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return path.join(path.dirname(dest), `.${path.basename(dest)}.${kind}-${suffix}`);
-}
-
-/**
- * Promote a prepared staging directory into its final location.
- * The final path is only exposed after the directory has been fully prepared.
- */
-function promoteDir(stagingDir: string, dest: string, fsOps: PromoteDirFsOps = fs): void {
-  if (fsOps.existsSync(dest)) {
-    throw new PluginError(`Destination already exists: ${dest}`);
-  }
-
-  fsOps.mkdirSync(path.dirname(dest), { recursive: true });
-  const tempDest = createSiblingTempPath(dest, 'tmp');
-
-  try {
-    moveDir(stagingDir, tempDest, fsOps);
-    fsOps.renameSync(tempDest, dest);
-  } catch (err) {
-    try { fsOps.rmSync(tempDest, { recursive: true, force: true }); } catch {}
-    throw err;
-  }
-}
-
-function replaceDir(stagingDir: string, dest: string, fsOps: PromoteDirFsOps = fs): void {
-  const replacement = beginReplaceDir(stagingDir, dest, fsOps);
-  replacement.finalize();
 }
 
 function cloneRepoToTemp(cloneUrl: string): string {
@@ -359,7 +333,7 @@ function runTransaction<T>(work: (tx: Transaction) => T): T {
 function beginReplaceDir(
   stagingDir: string,
   dest: string,
-  fsOps: PromoteDirFsOps = fs,
+  fsOps: ReplaceDirFsOps = fs,
 ): TransactionHandle {
   const destExisted = fsOps.existsSync(dest);
   fsOps.mkdirSync(path.dirname(dest), { recursive: true });
@@ -590,7 +564,14 @@ function installDependencies(dir: string): void {
   if (!fs.existsSync(pkgJsonPath)) return;
 
   try {
-    execFileSync('npm', ['install', '--omit=dev'], {
+    // --ignore-scripts is a security boundary, not an optimization: the plugin
+    // repo was just cloned from an untrusted third-party Git URL, and without
+    // this flag npm would execute preinstall/install/postinstall lifecycle
+    // scripts declared by the plugin (and every transitive dep) with the user's
+    // privileges at install time. Adapter plugins don't need lifecycle scripts
+    // to work — the adapter code is loaded later by the discovery path — so we
+    // deny that extra execution vector unconditionally. See issue #1753.
+    execFileSync('npm', ['install', '--omit=dev', '--ignore-scripts'], {
       cwd: dir,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -1590,8 +1571,6 @@ export {
   installLocalPlugin as _installLocalPlugin,
   isLocalPluginSource as _isLocalPluginSource,
   moveDir as _moveDir,
-  promoteDir as _promoteDir,
-  replaceDir as _replaceDir,
   resolvePluginSource as _resolvePluginSource,
   resolveStoredPluginSource as _resolveStoredPluginSource,
   toStoredPluginSource as _toStoredPluginSource,

@@ -46,6 +46,26 @@ const VIDEO_PLATFORM_DOMAINS = [
   'x.com', 'tiktok.com', 'vimeo.com', 'twitch.tv',
 ];
 
+/**
+ * Whether a URL's host is a known video platform.
+ *
+ * Matches on the parsed hostname with a domain boundary (exact host or a
+ * subdomain) rather than a raw substring of the whole URL. A plain
+ * `url.includes('x.com')` wrongly classifies `netflix.com`, `max.com`, etc.
+ * (and any URL whose path merely contains a token like `youtu.be`) as a
+ * video platform, routing ordinary files to yt-dlp and mislabelling content
+ * types. Mirrors the host-boundary check used in execution.ts.
+ */
+function isVideoPlatformUrl(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return VIDEO_PLATFORM_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico', '.bmp', '.avif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.avi', '.mov', '.mkv', '.flv', '.m3u8', '.ts']);
 const DOC_EXTENSIONS = new Set(['.html', '.htm', '.json', '.xml', '.txt', '.md', '.markdown']);
@@ -60,12 +80,11 @@ export function detectContentType(url: string, contentType?: string): 'image' | 
     if (contentType.startsWith('text/') || contentType.includes('json') || contentType.includes('xml')) return 'document';
   }
 
-  const urlLower = url.toLowerCase();
   const ext = path.extname(new URL(url).pathname).toLowerCase();
 
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (VIDEO_EXTENSIONS.has(ext)) return 'video';
-  if (VIDEO_PLATFORM_DOMAINS.some(d => urlLower.includes(d))) return 'video';
+  if (isVideoPlatformUrl(url)) return 'video';
   if (DOC_EXTENSIONS.has(ext)) return 'document';
   return 'binary';
 }
@@ -74,8 +93,7 @@ export function detectContentType(url: string, contentType?: string): 'image' | 
  * Check if URL requires yt-dlp for download.
  */
 export function requiresYtdlp(url: string): boolean {
-  const urlLower = url.toLowerCase();
-  return VIDEO_PLATFORM_DOMAINS.some(d => urlLower.includes(d));
+  return isVideoPlatformUrl(url);
 }
 
 /**
@@ -89,108 +107,93 @@ export async function httpDownload(
 ): Promise<{ success: boolean; size: number; error?: string }> {
   const { cookies, headers = {}, timeout = 30000, onProgress, maxRedirects = 10 } = options;
 
-  return new Promise((resolve) => {
-    const requestHeaders: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-      ...headers,
-    };
+  const requestHeaders: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+    ...headers,
+  };
 
-    if (cookies) {
-      requestHeaders['Cookie'] = cookies;
+  if (cookies) {
+    requestHeaders['Cookie'] = cookies;
+  }
+
+  const tempPath = `${destPath}.tmp`;
+
+  const cleanupTempFile = async () => {
+    try {
+      await fs.promises.rm(tempPath, { force: true });
+    } catch {
+      // Ignore cleanup errors so the original failure is preserved.
+    }
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetchWithNodeNetwork(url, {
+      headers: requestHeaders,
+      signal: controller.signal,
+      redirect: 'manual',
+    });
+    clearTimeout(timer);
+
+    // Handle redirects before creating any file handles.
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (location) {
+        if (redirectCount >= maxRedirects) {
+          return { success: false, size: 0, error: `Too many redirects (> ${maxRedirects})` };
+        }
+        const redirectUrl = resolveRedirectUrl(url, location);
+        const originalHost = new URL(url).hostname;
+        const redirectHost = new URL(redirectUrl).hostname;
+        const redirectOptions = originalHost === redirectHost
+          ? options
+          : { ...options, cookies: undefined, headers: stripCookieHeaders(options.headers) };
+        return httpDownload(
+          redirectUrl,
+          destPath,
+          redirectOptions,
+          redirectCount + 1,
+        );
+      }
     }
 
-    const tempPath = `${destPath}.tmp`;
-    let settled = false;
+    if (response.status !== 200) {
+      return { success: false, size: 0, error: `HTTP ${response.status}` };
+    }
 
-    const finish = (result: { success: boolean; size: number; error?: string }) => {
-      if (settled) return;
-      settled = true;
-      resolve(result);
-    };
+    if (!response.body) {
+      return { success: false, size: 0, error: 'Empty response body' };
+    }
 
-    const cleanupTempFile = async () => {
-      try {
-        await fs.promises.rm(tempPath, { force: true });
-      } catch {
-        // Ignore cleanup errors so the original failure is preserved.
-      }
-    };
+    const totalSize = parseInt(response.headers.get('content-length') || '0', 10);
+    let received = 0;
+    const progressStream = new Transform({
+      transform(chunk, _encoding, callback) {
+        received += chunk.length;
+        if (onProgress) onProgress(received, totalSize);
+        callback(null, chunk);
+      },
+    });
 
-    void (async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeout);
-      try {
-        const response = await fetchWithNodeNetwork(url, {
-          headers: requestHeaders,
-          signal: controller.signal,
-          redirect: 'manual',
-        });
-        clearTimeout(timer);
-
-        // Handle redirects before creating any file handles.
-        if (response.status >= 300 && response.status < 400) {
-          const location = response.headers.get('location');
-          if (location) {
-            if (redirectCount >= maxRedirects) {
-              finish({ success: false, size: 0, error: `Too many redirects (> ${maxRedirects})` });
-              return;
-            }
-            const redirectUrl = resolveRedirectUrl(url, location);
-            const originalHost = new URL(url).hostname;
-            const redirectHost = new URL(redirectUrl).hostname;
-            const redirectOptions = originalHost === redirectHost
-              ? options
-              : { ...options, cookies: undefined, headers: stripCookieHeaders(options.headers) };
-            finish(await httpDownload(
-              redirectUrl,
-              destPath,
-              redirectOptions,
-              redirectCount + 1,
-            ));
-            return;
-          }
-        }
-
-        if (response.status !== 200) {
-          finish({ success: false, size: 0, error: `HTTP ${response.status}` });
-          return;
-        }
-
-        if (!response.body) {
-          finish({ success: false, size: 0, error: 'Empty response body' });
-          return;
-        }
-
-        const totalSize = parseInt(response.headers.get('content-length') || '0', 10);
-        let received = 0;
-        const progressStream = new Transform({
-          transform(chunk, _encoding, callback) {
-            received += chunk.length;
-            if (onProgress) onProgress(received, totalSize);
-            callback(null, chunk);
-          },
-        });
-
-        try {
-          await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
-          await pipeline(
-            Readable.fromWeb(response.body as unknown as WebReadableStream),
-            progressStream,
-            fs.createWriteStream(tempPath),
-          );
-          await fs.promises.rename(tempPath, destPath);
-          finish({ success: true, size: received });
-        } catch (err) {
-          await cleanupTempFile();
-          finish({ success: false, size: 0, error: getErrorMessage(err) });
-        }
-      } catch (err) {
-        clearTimeout(timer);
-        await cleanupTempFile();
-        finish({ success: false, size: 0, error: err instanceof Error ? err.message : String(err) });
-      }
-    })();
-  });
+    try {
+      await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+      await pipeline(
+        Readable.fromWeb(response.body as unknown as WebReadableStream),
+        progressStream,
+        fs.createWriteStream(tempPath),
+      );
+      await fs.promises.rename(tempPath, destPath);
+      return { success: true, size: received };
+    } catch (err) {
+      await cleanupTempFile();
+      return { success: false, size: 0, error: getErrorMessage(err) };
+    }
+  } catch (err) {
+    clearTimeout(timer);
+    await cleanupTempFile();
+    return { success: false, size: 0, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export function resolveRedirectUrl(currentUrl: string, location: string): string {
@@ -223,14 +226,27 @@ export function exportCookiesToNetscape(
     const includeSubdomains = 'TRUE';
     const cookiePath = cookie.path || '/';
     const secure = cookie.secure ? 'TRUE' : 'FALSE';
-    const expiry = Math.floor(Date.now() / 1000) + 86400 * 365; // 1 year from now
+    const expiry = typeof cookie.expirationDate === 'number' && cookie.expirationDate > 0
+      ? Math.floor(cookie.expirationDate)
+      : Math.floor(Date.now() / 1000) + 86400 * 365; // fallback: 1 year from now
     const safeName = cookie.name.replace(/[\t\n\r]/g, '');
     const safeValue = cookie.value.replace(/[\t\n\r]/g, '');
     lines.push(`${domain}\t${includeSubdomains}\t${cookiePath}\t${secure}\t${expiry}\t${safeName}\t${safeValue}`);
   }
 
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, lines.join('\n'));
+  // 0o600: file holds live session cookies, must be owner-only. fchmod before
+  // writing also tightens a pre-existing broad file before new secrets land.
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(filePath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC, 0o600);
+    fs.fchmodSync(fd, 0o600);
+    fs.writeFileSync(fd, lines.join('\n'), 'utf8');
+  } finally {
+    if (fd !== undefined) {
+      fs.closeSync(fd);
+    }
+  }
 }
 
 export function formatCookieHeader(cookies: BrowserCookie[]): string {

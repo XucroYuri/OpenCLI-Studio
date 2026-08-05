@@ -3,9 +3,71 @@
  */
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { CommandExecutionError } from '@jackwener/opencli/errors';
+
+export function extractSelectedRichGridContents(browseData) {
+    const tabs = browseData?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+    const readRichGrid = (tab) => tab?.tabRenderer?.content?.richGridRenderer?.contents;
+    const selectedTab = tabs.find(t => t?.tabRenderer?.selected);
+    const selectedContents = readRichGrid(selectedTab);
+    if (Array.isArray(selectedContents))
+        return selectedContents;
+    const fallbackContents = readRichGrid(tabs.find(t => {
+        const contents = readRichGrid(t);
+        return Array.isArray(contents) && contents.length > 0;
+    })) || readRichGrid(tabs.find(t => Array.isArray(readRichGrid(t))));
+    return Array.isArray(fallbackContents) ? fallbackContents : [];
+}
+
+export function parseVideoItem(item) {
+    const content = item?.richItemRenderer?.content || item || {};
+    const normalizeId = (value) => {
+        const id = String(value || '').trim();
+        return /^[A-Za-z0-9_-]+$/.test(id) ? id : '';
+    };
+    // New lockupViewModel format
+    const lvm = content.lockupViewModel;
+    if (lvm && lvm.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') {
+        const id = normalizeId(lvm.contentId);
+        const meta = lvm.metadata?.lockupMetadataViewModel;
+        const title = meta?.title?.content || '';
+        if (!id || !title)
+            return null;
+        const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+        const parts = (rows[0]?.metadataParts || []).map(p => p.text?.content).filter(Boolean);
+        let duration = '';
+        for (const ov of (lvm.contentImage?.thumbnailViewModel?.overlays || [])) {
+            for (const b of (ov.thumbnailBottomOverlayViewModel?.badges || [])) {
+                if (b.thumbnailBadgeViewModel?.text) duration = b.thumbnailBadgeViewModel.text;
+            }
+        }
+        return {
+            title,
+            duration,
+            views: parts.join(' | '),
+            url: 'https://www.youtube.com/watch?v=' + id,
+        };
+    }
+    // Legacy videoRenderer format
+    const v = content.videoRenderer || content.gridVideoRenderer;
+    if (v) {
+        const id = normalizeId(v.videoId);
+        const title = v.title?.runs?.[0]?.text || v.title?.simpleText || '';
+        if (!id || !title)
+            return null;
+        return {
+            title,
+            duration: v.lengthText?.simpleText || v.thumbnailOverlays?.find(o => o.thumbnailOverlayTimeStatusRenderer)?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText || '',
+            views: (v.shortViewCountText?.simpleText || '') + (v.publishedTimeText?.simpleText ? ' | ' + v.publishedTimeText.simpleText : ''),
+            url: 'https://www.youtube.com/watch?v=' + id,
+        };
+    }
+    return null;
+}
+
 cli({
     site: 'youtube',
     name: 'channel',
+    access: 'read',
     description: 'Get YouTube channel info and recent videos',
     domain: 'www.youtube.com',
     strategy: Strategy.COOKIE,
@@ -27,6 +89,8 @@ cli({
         const apiKey = cfg.INNERTUBE_API_KEY;
         const context = cfg.INNERTUBE_CONTEXT;
         if (!apiKey || !context) return {error: 'YouTube config not found'};
+        const extractSelectedRichGridContents = ${extractSelectedRichGridContents.toString()};
+        const parseVideoItem = ${parseVideoItem.toString()};
 
         // Resolve handle to browseId if needed
         let browseId = channelId;
@@ -81,34 +145,42 @@ cli({
           for (const section of sections) {
             for (const shelf of (section.itemSectionRenderer?.contents || [])) {
               for (const item of (shelf.shelfRenderer?.content?.horizontalListRenderer?.items || [])) {
-                // New lockupViewModel format
-                const lvm = item.lockupViewModel;
-                if (lvm && lvm.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO' && recentVideos.length < limit) {
-                  const meta = lvm.metadata?.lockupMetadataViewModel;
-                  const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
-                  const viewsAndTime = (rows[0]?.metadataParts || []).map(p => p.text?.content).filter(Boolean).join(' | ');
-                  let duration = '';
-                  for (const ov of (lvm.contentImage?.thumbnailViewModel?.overlays || [])) {
-                    for (const b of (ov.thumbnailBottomOverlayViewModel?.badges || [])) {
-                      if (b.thumbnailBadgeViewModel?.text) duration = b.thumbnailBadgeViewModel.text;
-                    }
-                  }
-                  recentVideos.push({
-                    title: meta?.title?.content || '',
-                    duration,
-                    views: viewsAndTime,
-                    url: 'https://www.youtube.com/watch?v=' + lvm.contentId,
-                  });
+                if (recentVideos.length < limit) {
+                  const parsed = parseVideoItem(item);
+                  if (parsed) recentVideos.push(parsed);
                 }
-                // Legacy gridVideoRenderer format
-                if (item.gridVideoRenderer && recentVideos.length < limit) {
-                  const v = item.gridVideoRenderer;
-                  recentVideos.push({
-                    title: v.title?.runs?.[0]?.text || v.title?.simpleText || '',
-                    duration: v.thumbnailOverlays?.[0]?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText || '',
-                    views: (v.shortViewCountText?.simpleText || '') + (v.publishedTimeText?.simpleText ? ' | ' + v.publishedTimeText.simpleText : ''),
-                    url: 'https://www.youtube.com/watch?v=' + v.videoId,
-                  });
+              }
+            }
+          }
+        }
+
+        // If Home tab has no videos, try Videos tab
+        if (recentVideos.length === 0) {
+          const videosTab = tabs.find(t => {
+            const tab = t.tabRenderer;
+            const url = tab?.endpoint?.commandMetadata?.webCommandMetadata?.url || '';
+            return tab?.tabIdentifier === 'VIDEOS'
+              || url.endsWith('/videos')
+              || tab?.title === 'Videos';
+          });
+          const videosTabParams = videosTab?.tabRenderer?.endpoint?.browseEndpoint?.params;
+          if (videosTabParams) {
+            const videosResp = await fetch('/youtubei/v1/browse?key=' + apiKey + '&prettyPrint=false', {
+              method: 'POST', credentials: 'include',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({context, browseId, params: videosTabParams})
+            });
+            if (videosResp.ok) {
+              const videosData = await videosResp.json();
+              // The InnerTube response includes ALL tabs (Home/Videos/Shorts/...),
+              // not just the requested one. Prefer the selected tab, but keep
+              // older single-tab responses working when YouTube omits selected.
+              const richGrid = extractSelectedRichGridContents(videosData);
+              for (const item of richGrid) {
+                if (recentVideos.length >= limit) break;
+                const parsed = parseVideoItem(item);
+                if (parsed) {
+                  recentVideos.push(parsed);
                 }
               }
             }
@@ -148,3 +220,8 @@ cli({
         return rows;
     },
 });
+
+export const __test__ = {
+    extractSelectedRichGridContents,
+    parseVideoItem,
+};

@@ -12,15 +12,12 @@ export const BUILTIN_COMMANDS = [
   'list',
   'validate',
   'verify',
-  'explore',
-  'probe',        // alias for explore
-  'synthesize',
-  'generate',
-  'cascade',
+  'auth',
+  'browser',
+  'tab',
   'doctor',
   'plugin',
-  'install',
-  'register',
+  'external',
   'completion',
 ];
 

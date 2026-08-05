@@ -40,6 +40,7 @@ cli({
   description: 'Trending posts on MySite',
   domain: 'www.mysite.com',
   strategy: Strategy.PUBLIC,
+  access: 'read',
   browser: false,
   args: [
     { name: 'query', positional: true, required: true, help: 'Search keyword' },
@@ -84,14 +85,12 @@ cli({
     const { query, limit = 10 } = kwargs;
     await page.goto('https://www.mysite.com');
 
-    const data = await page.evaluate(`
-      (async () => {
-        const res = await fetch('/api/search?q=${encodeURIComponent(query)}', {
-          credentials: 'include'
-        });
-        return (await res.json()).results;
-      })()
-    `);
+    const data = await page.evaluate(async (q: string) => {
+      const res = await fetch('/api/search?q=' + encodeURIComponent(q), {
+        credentials: 'include'
+      });
+      return (await res.json()).results;
+    }, query);
 
     return data.slice(0, Number(limit)).map((item: any) => ({
       title: item.title,
@@ -102,7 +101,7 @@ cli({
 });
 ```
 
-Use `opencli explore <url>` to discover APIs and see [opencli-explorer skill](./skills/opencli-explorer/SKILL.md) if you need the full adapter workflow.
+Install the [`opencli-adapter-author` skill](./skills/opencli-adapter-author/SKILL.md) if you need the full adapter workflow — recon → API discovery → field decoding → `opencli browser verify`.
 
 ### Validate Your Adapter
 

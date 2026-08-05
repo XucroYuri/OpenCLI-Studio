@@ -5,12 +5,26 @@
 /** Default daemon port for HTTP/WebSocket communication with browser extension */
 export const DEFAULT_DAEMON_PORT = 19825;
 
-/** Browser Bridge release page for the current OpenCLI Studio fork. */
-export const BROWSER_BRIDGE_RELEASES_URL = 'https://github.com/XucroYuri/OpenCLI-Studio/releases';
+export function unsupportedDaemonPortEnvMessage(value?: string): string {
+  const suffix = value ? ` (received ${value})` : '';
+  return `OPENCLI_DAEMON_PORT is no longer supported${suffix}. ` +
+    `The OpenCLI Chrome extension can only connect to localhost:${DEFAULT_DAEMON_PORT}. ` +
+    'Unset OPENCLI_DAEMON_PORT and rerun opencli.';
+}
 
-/** GitHub API endpoint used for Browser Bridge release/version checks. */
-export const BROWSER_BRIDGE_RELEASES_API_URL = 'https://api.github.com/repos/XucroYuri/OpenCLI-Studio/releases?per_page=20';
-
+/**
+ * True when OPENCLI_DAEMON_PORT carries no real configuration: unset, empty,
+ * or equal to the default port. Launchers (notably OpenCLIApp) inject the
+ * variable with the default value into every CLI they manage — rejecting that
+ * harmless redundancy bricked all commands on fresh installs (#2068). Only a
+ * NON-default value is a genuine misconfiguration worth failing on.
+ */
+export function isIgnorableDaemonPortEnv(value: string | undefined): boolean {
+  if (value === undefined) return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return Number(trimmed) === DEFAULT_DAEMON_PORT;
+}
 
 /** URL query params that are volatile/ephemeral and should be stripped from patterns */
 export const VOLATILE_PARAMS = new Set([
