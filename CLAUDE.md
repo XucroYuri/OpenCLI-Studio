@@ -3,7 +3,7 @@
 ## Project Identity
 - **Name**: OpenCLI Studio
 - **Type**: Fork of [jackwener/OpenCLI](https://github.com/jackwener/OpenCLI) — upstream syncs to this repo's `main` branch
-- **Package**: `@jackwener/opencli` v1.7.4 (upstream v1.8.6 @ 399c0de — sync needed)
+- **Package**: `@jackwener/opencli` v1.8.6, CLI command: `opencli`
 - **Stack**: TypeScript + Vue 3 + Chrome DevTools Protocol + 96 site adapters
 - **Remote**: `origin` = XucroYuri/OpenCLI-Studio (fork), `upstream` = jackwener/OpenCLI (v1.8.6)
 
