@@ -5469,7 +5469,7 @@
     "description": "BOSS直聘查看职位详情",
     "access": "read",
     "domain": "www.zhipin.com",
-    "strategy": "cookie",
+    "strategy": "ui",
     "browser": true,
     "args": [
       {
@@ -5477,7 +5477,7 @@
         "type": "str",
         "required": true,
         "positional": true,
-        "help": "Security ID from search results (securityId field)"
+        "help": "Security ID from search results (security_id field)"
       }
     ],
     "columns": [
@@ -5486,7 +5486,7 @@
       "experience",
       "degree",
       "city",
-      "district",
+      "address",
       "description",
       "skills",
       "welfare",
@@ -5497,13 +5497,14 @@
       "industry",
       "scale",
       "stage",
-      "address",
       "url"
     ],
     "type": "js",
     "modulePath": "boss/detail.js",
     "sourceFile": "boss/detail.js",
-    "navigateBefore": false
+    "navigateBefore": false,
+    "siteSession": "persistent",
+    "defaultWindowMode": "background"
   },
   {
     "site": "boss",
@@ -5794,7 +5795,7 @@
     "description": "BOSS直聘搜索职位（不带关键词时返回为你推荐职位）",
     "access": "read",
     "domain": "www.zhipin.com",
-    "strategy": "cookie",
+    "strategy": "intercept",
     "browser": true,
     "args": [
       {
@@ -5877,7 +5878,9 @@
     "type": "js",
     "modulePath": "boss/search.js",
     "sourceFile": "boss/search.js",
-    "navigateBefore": false
+    "navigateBefore": false,
+    "siteSession": "persistent",
+    "defaultWindowMode": "background"
   },
   {
     "site": "boss",
@@ -7312,9 +7315,8 @@
       {
         "name": "model",
         "type": "str",
-        "default": "sonnet",
         "required": false,
-        "help": "Model to use: sonnet, opus, or haiku",
+        "help": "Switch to sonnet, opus, or haiku before sending. Omit to keep the current selection.",
         "choices": [
           "sonnet",
           "opus",
@@ -8057,6 +8059,12 @@
         "required": true,
         "positional": true,
         "help": "Text, command (e.g. /review), or skill (e.g. $imagegen)"
+      },
+      {
+        "name": "pick",
+        "type": "str",
+        "required": false,
+        "help": "Picker option label to select when a slash command opens the picker (e.g. \"Review Agent\")"
       },
       {
         "name": "project",
@@ -12726,7 +12734,7 @@
   {
     "site": "douyin",
     "name": "stats",
-    "description": "作品数据分析",
+    "description": "获取单个作品的创作者中心深层指标",
     "access": "read",
     "domain": "creator.douyin.com",
     "strategy": "cookie",
@@ -40010,6 +40018,33 @@
     "navigateBefore": false,
     "siteSession": "persistent",
     "defaultWindowMode": "foreground"
+  },
+  {
+    "site": "twitter",
+    "name": "mute-word",
+    "description": "Add a muted word or phrase on Twitter/X",
+    "access": "write",
+    "domain": "x.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "keyword",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "Word or phrase to mute"
+      }
+    ],
+    "columns": [
+      "keyword",
+      "status",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "twitter/mute-word.js",
+    "sourceFile": "twitter/mute-word.js",
+    "navigateBefore": true
   },
   {
     "site": "twitter",

@@ -1,6 +1,6 @@
 {
   "name": "@jackwener/opencli",
-  "version": "1.8.6",
+  "version": "1.8.7",
   "publishConfig": {
     "access": "public"
   },
@@ -61,7 +61,7 @@
     "studio:test": "vitest run --config studio/vitest.config.ts",
     "studio:typecheck": "vue-tsc --noEmit -p studio/tsconfig.json",
     "studio:verify": "npm run typecheck && npm run studio:typecheck && vitest run --project unit src/studio/**/*.test.ts src/browser/daemon-client.test.ts src/commands/daemon.test.ts && npm run studio:test",
-    "prepare": "[ -d src ] && npm run build || true",
+    "prepare": "node scripts/prepare.cjs",
     "prepublishOnly": "npm run build",
     "test": "vitest run --project unit --project extension --project adapter",
     "test:bun": "bun vitest run --project unit --project extension --project adapter",
@@ -91,7 +91,7 @@
     "@mozilla/readability": "^0.6.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.1",
     "turndown": "^7.2.2",
     "turndown-plugin-gfm": "^1.0.2",
     "undici": "^6.27.0",
